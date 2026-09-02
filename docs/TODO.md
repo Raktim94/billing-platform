@@ -37,15 +37,16 @@ part of finishing a stage, not after the fact.
 - [ ] **Carried to Stage 4:** import/export scaffolding for products/customers/suppliers (CSV/XLSX, dry-run + validation report, brief §53) — not built in the Stage 3 pass, genuinely missing, not deferred by decision
 - [x] Unit tests (63/63) + integration tests (15/15 incl. per-module RLS cross-org checks), independently re-verified
 
-## Stage 4 — Inventory
-- [ ] `internal/modules/inventory`: warehouses (already exist from Stage 2) + stock_movements (append-only), stock_balances (materialized, transactional)
-- [ ] Movement types per brief §11 (OPENING, PURCHASE_RECEIPT, SALE, TRANSFER_IN/OUT, ADJUSTMENT_IN/OUT, ASSEMBLY_*, DAMAGE, EXPIRY)
-- [ ] Batches, lots, serial numbers, expiry/manufacturing dates
-- [ ] Stock reservations, low stock/reorder/safety stock config
-- [ ] Weighted-average costing strategy (interface built for FIFO later, not implemented)
-- [ ] `internal/modules/purchases`: purchase order, goods receipt (GRN), purchase invoice, purchase return, debit note, supplier payment/credit
-- [ ] Concurrency tests: two operators selling last unit simultaneously, concurrent transfer (Scenario D)
-- [ ] Unit + integration tests
+## Stage 4 — Inventory ✅ (2026-09-03, one scope note)
+- [x] `internal/modules/inventory`: stock_movements (append-only), stock_balances (materialized, app-layer-maintained — see `docs/adr/0002-stock-balance-maintenance.md`)
+- [x] Movement types per brief §11 (OPENING, PURCHASE_RECEIPT, PURCHASE_RETURN, SALE, SALE_RETURN, TRANSFER_IN/OUT, ADJUSTMENT_IN/OUT, ASSEMBLY_IN/OUT, DAMAGE, EXPIRY) — SALE/SALE_RETURN/ASSEMBLY_* wired as movement-recording primitives only; the sales/assembly documents that call them are Stage 5+ scope
+- [x] Batches (batch+lot modeled as one concept, see migration comment), serial numbers, expiry/manufacturing dates
+- [x] Stock reservations, low stock/reorder/safety stock (`stock_policies`)
+- [x] Weighted-average costing strategy (unit-conversion-normalized — real bug caught and fixed in dev, see `docs/adr/0002-stock-balance-maintenance.md` and `TestInventory_UnitConversionAwareReceipt`)
+- [x] `internal/modules/purchases`: purchase order, goods receipt (GRN — posts stock), purchase invoice, purchase return (reverses stock), debit note. **Supplier payment/credit deliberately NOT built** — needs Stage 6's ledger/payment infrastructure to post against; a payment table with nothing to apply it to would just be a stub. Permissions reuse Stage 2's pre-seeded `purchase.*` codes (not a new `purchases.*` namespace)
+- [x] Concurrency tests: last-unit oversell race (only one of 8 concurrent takers wins), concurrent multi-warehouse transfer (no lost/duplicated stock), concurrent document-number allocation (Scenario D/I), all re-run multiple times for stability
+- [x] Unit tests (78/78) + integration tests (39/39, incl. RLS sweep across every new table) — independently re-verified
+- [x] **Carried-over CSV/XLSX import from Stage 3, completed this stage**: `internal/platform/importer` (shared parse + dry-run/report scaffolding) wired into `catalogue.ImportProducts` and `contacts.ImportParties`, with dedup + per-row validation reporting
 
 ## Stage 5 — Sales / GST
 - [ ] `internal/modules/taxation`: generic `TaxEngine` interface, `Money`-based calculation, tax_document/tax_line/tax_component model, tax_rate_master with valid_from/valid_to

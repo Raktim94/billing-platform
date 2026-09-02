@@ -28,12 +28,18 @@ import (
 	identityapp "billing-platform/internal/modules/identity/app"
 	identityhttp "billing-platform/internal/modules/identity/httpapi"
 	identitypg "billing-platform/internal/modules/identity/pg"
+	inventoryapp "billing-platform/internal/modules/inventory/app"
+	inventoryhttp "billing-platform/internal/modules/inventory/httpapi"
+	inventorypg "billing-platform/internal/modules/inventory/pg"
 	orgapp "billing-platform/internal/modules/organisation/app"
 	orghttp "billing-platform/internal/modules/organisation/httpapi"
 	orgpg "billing-platform/internal/modules/organisation/pg"
 	pricingapp "billing-platform/internal/modules/pricing/app"
 	pricinghttp "billing-platform/internal/modules/pricing/httpapi"
 	pricingpg "billing-platform/internal/modules/pricing/pg"
+	purchasesapp "billing-platform/internal/modules/purchases/app"
+	purchaseshttp "billing-platform/internal/modules/purchases/httpapi"
+	purchasespg "billing-platform/internal/modules/purchases/pg"
 	"billing-platform/internal/platform/audit"
 	"billing-platform/internal/platform/config"
 	appcrypto "billing-platform/internal/platform/crypto"
@@ -156,6 +162,32 @@ func run() error {
 		auditRecorder,
 	)
 
+	inventorySvc := inventoryapp.NewService(
+		pool,
+		inventorypg.NewStockMovementRepo(pool),
+		inventorypg.NewStockBalanceRepo(pool),
+		inventorypg.NewStockReservationRepo(pool),
+		inventorypg.NewStockBatchRepo(pool),
+		inventorypg.NewSerialNumberRepo(pool),
+		inventorypg.NewStockPolicyRepo(pool),
+		inventorypg.NewStockTransferRepo(pool),
+		inventorypg.NewStockAdjustmentRepo(pool),
+		cataloguepg.NewProductVariantRepo(pool),
+		cataloguepg.NewProductRepo(pool),
+		cataloguepg.NewUnitConversionRepo(pool),
+		permissionsChecker,
+		auditRecorder,
+	)
+
+	purchasesSvc := purchasesapp.NewService(
+		pool,
+		purchasespg.NewDocumentRepo(pool),
+		purchasespg.NewDocumentLineRepo(pool),
+		inventorySvc,
+		permissionsChecker,
+		auditRecorder,
+	)
+
 	identitySvc := identityapp.NewService(
 		pool,
 		identitypg.NewUserRepo(pool),
@@ -193,6 +225,8 @@ func run() error {
 			cataloguehttp.NewHandlers(catalogueSvc).Mount(r)
 			contactshttp.NewHandlers(contactsSvc).Mount(r)
 			pricinghttp.NewHandlers(pricingSvc).Mount(r)
+			inventoryhttp.NewHandlers(inventorySvc).Mount(r)
+			purchaseshttp.NewHandlers(purchasesSvc).Mount(r)
 		})
 	})
 

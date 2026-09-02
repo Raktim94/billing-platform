@@ -14,6 +14,7 @@ import (
 	"billing-platform/internal/modules/catalogue/app"
 	"billing-platform/internal/modules/catalogue/domain"
 	httpx "billing-platform/internal/platform/http"
+	"billing-platform/internal/platform/importer"
 	"billing-platform/internal/platform/permissions"
 )
 
@@ -36,6 +37,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/catalogue/variants", h.createVariant)
 	r.Post("/catalogue/barcodes", h.addBarcode)
 	r.Get("/catalogue/barcodes/{code}", h.lookupBarcode)
+	r.Post("/catalogue/products/import", h.importProducts)
 }
 
 func decodeJSON[T any](r *http.Request) (T, error) {
@@ -306,4 +308,49 @@ func (h *Handlers) lookupBarcode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, b)
+}
+
+// importProducts bulk-imports products from an uploaded CSV or XLSX file
+// (brief §53). Query params: format=csv|xlsx (required), dry_run=true|false
+// (default false). The request body is the raw file content.
+func (h *Handlers) importProducts(w http.ResponseWriter, r *http.Request) {
+	rows, ok := parseImportBody(w, r)
+	if !ok {
+		return
+	}
+	dryRun := r.URL.Query().Get("dry_run") == "true"
+	report, err := h.svc.ImportProducts(r.Context(), principal(r), rows, dryRun)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, report)
+}
+
+// parseImportBody reads and parses r.Body per the "format" query
+// parameter, writing an error response and returning ok=false on
+// failure. Same shape as contacts/httpapi's identical helper — kept
+// per-package rather than shared in internal/platform/http because it's
+// three lines of routing glue, not enough to justify a new cross-module
+// dependency for either module.
+func parseImportBody(w http.ResponseWriter, r *http.Request) ([]importer.Row, bool) {
+	switch r.URL.Query().Get("format") {
+	case "csv":
+		rows, err := importer.ParseCSV(r.Body)
+		if err != nil {
+			httpx.WriteError(w, r, httpx.NewBadRequest("INVALID_CSV", "Could not parse the uploaded file as CSV: "+err.Error()))
+			return nil, false
+		}
+		return rows, true
+	case "xlsx":
+		rows, err := importer.ParseXLSX(r.Body)
+		if err != nil {
+			httpx.WriteError(w, r, httpx.NewBadRequest("INVALID_XLSX", "Could not parse the uploaded file as XLSX: "+err.Error()))
+			return nil, false
+		}
+		return rows, true
+	default:
+		httpx.WriteError(w, r, httpx.NewBadRequest("INVALID_FORMAT", `format query parameter must be "csv" or "xlsx".`))
+		return nil, false
+	}
 }
