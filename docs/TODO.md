@@ -48,16 +48,19 @@ part of finishing a stage, not after the fact.
 - [x] Unit tests (78/78) + integration tests (39/39, incl. RLS sweep across every new table) — independently re-verified
 - [x] **Carried-over CSV/XLSX import from Stage 3, completed this stage**: `internal/platform/importer` (shared parse + dry-run/report scaffolding) wired into `catalogue.ImportProducts` and `contacts.ImportParties`, with dedup + per-row validation reporting
 
-## Stage 5 — Sales / GST
-- [ ] `internal/modules/taxation`: generic `TaxEngine` interface, `Money`-based calculation, tax_document/tax_line/tax_component model, tax_rate_master with valid_from/valid_to
-- [ ] `internal/modules/gstindia`: `IndiaGSTEngine` — GSTIN, place of supply, intra/inter-state CGST+SGST vs IGST, cess, HSN, reverse charge, B2B/B2C/export/SEZ
-- [ ] Golden tax fixtures: 0/3/5/12/18/28/40%, ₹90 inclusive @18% fixture, intra-state split, inter-state IGST (brief §67, Scenarios A/B/C)
+## Stage 5a — Tax Engine ✅ (2026-09-03)
+- [x] `internal/modules/taxation`: generic `TaxEngine` interface, `Money`-based calculation, tax_document/tax_line/tax_component model, tax_rate_master with valid_from/valid_to
+- [x] `internal/modules/gstindia`: `IndiaGSTEngine` — GSTIN, place of supply, intra/inter-state CGST+SGST/UTGST vs IGST, cess, HSN, exempt/nil-rated/zero-rated, B2B/B2C/export/SEZ carried on tax_document; reverse-charge as a caller-set flag (liability accounting is Stage 6)
+- [x] Golden tax fixtures: 0/3/5/12/18/28/40%, ₹90 inclusive @18% fixture (verified against the brief's exact 76.271186.../13.728813... figures), intra-state CGST+SGST split, inter-state IGST, cess-on-taxable-not-gross, UTGST, valid_from/valid_to snapshot immutability — independently re-verified, numbers checked by hand against the actual test code, not just trusted
+- [x] Unit tests (96/96) + integration tests (47/47) — independently re-verified, 2 real bugs caught by tests and fixed (RLS-scope-before-calculation, CHECK-constraint default)
+
+## Stage 5b — Sales Documents & Printing
 - [ ] `internal/modules/sales`: quotation, proforma, sales order, delivery challan, tax invoice, credit/cash invoice, credit/debit note, sales return, recurring invoice, POS invoice, conversion flows (estimate→invoice, order→invoice, challan→invoice)
-- [ ] Invoice header + line fields per brief §5, calculation snapshot immutability (brief §55)
-- [ ] Document numbering: configurable series, concurrency-safe allocation (Scenario I)
+- [ ] Invoice header + line fields per brief §5, calculation snapshot immutability (brief §55) — calls Stage 5a's `TaxEngine`, calls `inventory.RecordMovementForOtherModule` on finalize (SALE/SALE_RETURN movement types already exist from Stage 4)
+- [ ] Document numbering: configurable series (organisation/legal-entity/branch/FY-scoped per brief §51), concurrency-safe allocation (Scenario I) — the real, full numbering system (purchases' Stage 4 counter was explicitly a minimal placeholder, not this)
 - [ ] Printing/PDF template engine: A4 GST invoice, compact, thermal 80mm/58mm, quotation, PO, challan, receipt, statement, credit/debit note (brief §19)
 - [ ] Sales screen UX groundwork (API side): fast product/customer search, stock/price/tax visibility in one call
-- [ ] Unit + integration + golden fixture tests
+- [ ] Unit + integration tests
 
 ## Stage 6 — Accounting
 - [ ] `internal/modules/accounting`: chart_of_accounts, journals, journal_lines, fiscal_periods, payments, receipts, bank/cash accounts, reconciliation
