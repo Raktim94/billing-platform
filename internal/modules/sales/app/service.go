@@ -1,0 +1,496 @@
+// Package app is the sales module's application/use-case layer. Mirrors
+// internal/modules/purchases/app's shape. FinalizeDocument is where a
+// document's tax snapshot (via taxation.Service.CalculateAndSnapshotTx)
+// and stock effect (via inventory.RecordMovementForOtherModule) actually
+// post — both inside this module's own RunScoped transaction, so the
+// document's finalized state, its tax numbers, and its stock movement
+// commit or roll back together (docs/architecture.md §2, brief §32).
+package app
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+
+	catalogueapp "billing-platform/internal/modules/catalogue/app"
+	contactsapp "billing-platform/internal/modules/contacts/app"
+	inventoryapp "billing-platform/internal/modules/inventory/app"
+	inventorydomain "billing-platform/internal/modules/inventory/domain"
+	orgapp "billing-platform/internal/modules/organisation/app"
+	pricingapp "billing-platform/internal/modules/pricing/app"
+	"billing-platform/internal/modules/sales/domain"
+	taxationapp "billing-platform/internal/modules/taxation/app"
+	taxdomain "billing-platform/internal/modules/taxation/domain"
+	"billing-platform/internal/platform/audit"
+	"billing-platform/internal/platform/database"
+	"billing-platform/internal/platform/money"
+	"billing-platform/internal/platform/numbering"
+	"billing-platform/internal/platform/permissions"
+)
+
+type Service struct {
+	pool         database.Runner
+	documents    domain.DocumentRepository
+	lines        domain.DocumentLineRepository
+	inventory    *inventoryapp.Service
+	taxation     *taxationapp.Service
+	catalogue    *catalogueapp.Service
+	contacts     *contactsapp.Service
+	organisation *orgapp.Service
+	// pricing is optional (BillingLookup's price-resolution enrichment is
+	// best-effort — a nil pricing service just means BillingLookup never
+	// populates UnitPrice, everything else still works).
+	pricing     *pricingapp.Service
+	numbering   *numbering.Service
+	permissions *permissions.Checker
+	audit       audit.Recorder
+	now         func() time.Time
+}
+
+func NewService(
+	pool database.Runner,
+	documents domain.DocumentRepository,
+	lines domain.DocumentLineRepository,
+	inventorySvc *inventoryapp.Service,
+	taxationSvc *taxationapp.Service,
+	catalogueSvc *catalogueapp.Service,
+	contactsSvc *contactsapp.Service,
+	organisationSvc *orgapp.Service,
+	pricingSvc *pricingapp.Service,
+	numberingSvc *numbering.Service,
+	checker *permissions.Checker,
+	recorder audit.Recorder,
+) *Service {
+	return &Service{pool: pool, documents: documents, lines: lines, inventory: inventorySvc, taxation: taxationSvc,
+		catalogue: catalogueSvc, contacts: contactsSvc, organisation: organisationSvc, pricing: pricingSvc, numbering: numberingSvc,
+		permissions: checker, audit: recorder, now: time.Now}
+}
+
+// Permission codes are the ones migrations/0002_rbac_catalog.up.sql
+// already pre-seeded for this module's exact brief §26 example list —
+// same reuse-don't-duplicate rationale as purchases (migrations/0014's
+// header comment).
+func (s *Service) view(ctx context.Context, principal permissions.Principal) error {
+	return s.permissions.Require(ctx, principal, "sales.view", permissions.Scope{})
+}
+func (s *Service) create(ctx context.Context, principal permissions.Principal) error {
+	return s.permissions.Require(ctx, principal, "sales.create", permissions.Scope{})
+}
+func (s *Service) editDraft(ctx context.Context, principal permissions.Principal) error {
+	return s.permissions.Require(ctx, principal, "sales.edit_draft", permissions.Scope{})
+}
+func (s *Service) finalizePerm(ctx context.Context, principal permissions.Principal) error {
+	return s.permissions.Require(ctx, principal, "sales.finalize", permissions.Scope{})
+}
+func (s *Service) discountPerm(ctx context.Context, principal permissions.Principal) error {
+	return s.permissions.Require(ctx, principal, "sales.discount", permissions.Scope{})
+}
+
+func documentPrefix(t domain.DocumentType) string {
+	switch t {
+	case domain.DocQuotation:
+		return "QTN"
+	case domain.DocProformaInvoice:
+		return "PI"
+	case domain.DocSalesOrder:
+		return "SO"
+	case domain.DocDeliveryChallan:
+		return "DC"
+	case domain.DocTaxInvoice:
+		return "INV"
+	case domain.DocPOSInvoice:
+		return "POS"
+	case domain.DocCreditNote:
+		return "CN"
+	case domain.DocDebitNote:
+		return "DN"
+	case domain.DocSalesReturn:
+		return "SR"
+	case domain.DocRecurringInvoice:
+		return "RINV"
+	default:
+		return "SDOC"
+	}
+}
+
+type CreateDocumentParams struct {
+	LegalEntityID             uuid.UUID
+	BranchID                  uuid.UUID
+	WarehouseID               uuid.UUID
+	CustomerPartyID           uuid.UUID
+	DocumentType              domain.DocumentType
+	ReferenceDocumentID       *uuid.UUID
+	IssueDate                 time.Time
+	DueDate                   *time.Time
+	SupplyDate                *time.Time
+	BillingAddressID          *uuid.UUID
+	ShippingAddressID         *uuid.UUID
+	CustomerTaxRegistrationID *uuid.UUID
+	// PlaceOfSupplyStateCode is taken as a direct input rather than
+	// re-derived from the customer's address at finalize time — where a
+	// supply is "deemed to occur" for GST purposes has real legal nuance
+	// (bill-to vs. ship-to, specific-goods exceptions) this project isn't
+	// going to silently guess (brief Rule 2: never invent a government
+	// rule); the caller (eventually a UI defaulting it from the shipping
+	// address, still overridable) supplies it explicitly, and it is then
+	// immutable once set on the document (brief §55).
+	PlaceOfSupplyStateCode string
+	SalespersonUserID      *uuid.UUID
+	PriceListID            *uuid.UUID
+	CurrencyCode           string
+	BaseCurrencyCode       string
+	ExchangeRate           decimal.Decimal
+	PricingMode            taxdomain.PricingMode
+	CustomerReference      string
+	Transporter            string
+	VehicleNumber          string
+	ShippingTerms          string
+	Notes                  string
+	TermsAndConditions     string
+	PaymentTermsDays       int
+}
+
+func (s *Service) CreateDocument(ctx context.Context, principal permissions.Principal, p CreateDocumentParams) (*domain.Document, error) {
+	if err := s.create(ctx, principal); err != nil {
+		return nil, err
+	}
+	if !domain.ValidDocumentType(p.DocumentType) {
+		return nil, domain.ErrInvalidDocumentType
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("sales: generating sales_document id: %w", err)
+	}
+	now := s.now()
+	issueDate := p.IssueDate
+	if issueDate.IsZero() {
+		issueDate = now
+	}
+	pricingMode := p.PricingMode
+	if pricingMode == "" {
+		pricingMode = taxdomain.PricingExclusive
+	}
+	exchangeRate := p.ExchangeRate
+	if exchangeRate.IsZero() {
+		exchangeRate = decimal.NewFromInt(1)
+	}
+	d := &domain.Document{
+		ID: id, OrganisationID: principal.OrganisationID, LegalEntityID: p.LegalEntityID, BranchID: p.BranchID,
+		WarehouseID: p.WarehouseID, CustomerPartyID: p.CustomerPartyID, DocumentType: p.DocumentType,
+		ReferenceDocumentID: p.ReferenceDocumentID, Status: domain.StatusDraft, IssueDate: issueDate,
+		DueDate: p.DueDate, SupplyDate: p.SupplyDate, BillingAddressID: p.BillingAddressID, ShippingAddressID: p.ShippingAddressID,
+		CustomerTaxRegistrationID: p.CustomerTaxRegistrationID, PlaceOfSupplyStateCode: p.PlaceOfSupplyStateCode,
+		SalespersonUserID: p.SalespersonUserID, PriceListID: p.PriceListID, CurrencyCode: p.CurrencyCode,
+		BaseCurrencyCode: p.BaseCurrencyCode, ExchangeRate: exchangeRate, PricingMode: pricingMode,
+		CustomerReference: p.CustomerReference, Transporter: p.Transporter, VehicleNumber: p.VehicleNumber,
+		ShippingTerms: p.ShippingTerms, Notes: p.Notes, TermsAndConditions: p.TermsAndConditions,
+		PaymentTermsDays: p.PaymentTermsDays, CreatedBy: principal.UserID, CreatedAt: now, UpdatedAt: now,
+	}
+	err = s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		number, err := s.numbering.NextDocumentNumber(ctx, principal.OrganisationID, p.BranchID, string(p.DocumentType), documentPrefix(p.DocumentType), issueDate)
+		if err != nil {
+			return err
+		}
+		d.DocumentNumber = number
+		if err := s.documents.Create(ctx, d); err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, audit.Entry{
+			OrganisationID: principal.OrganisationID, ActorUserID: &principal.UserID, ActorType: audit.ActorUser,
+			Action: "sales_document.created", EntityType: "sales_document", EntityID: &id,
+			AfterState: map[string]any{"document_type": string(p.DocumentType), "document_number": d.DocumentNumber}, At: now,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func (s *Service) GetDocument(ctx context.Context, principal permissions.Principal, id uuid.UUID) (*domain.Document, []*domain.DocumentLine, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, nil, err
+	}
+	var doc *domain.Document
+	var lines []*domain.DocumentLine
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		doc, err = s.documents.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		lines, err = s.lines.ListByDocument(ctx, id)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return doc, lines, nil
+}
+
+func (s *Service) ListDocuments(ctx context.Context, principal permissions.Principal, documentType *domain.DocumentType) ([]*domain.Document, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, err
+	}
+	var result []*domain.Document
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		result, err = s.documents.ListByOrganisation(ctx, principal.OrganisationID, documentType)
+		return err
+	})
+	return result, err
+}
+
+type AddLineParams struct {
+	DocumentID         uuid.UUID
+	ProductVariantID   uuid.UUID
+	UnitID             uuid.UUID
+	Quantity           decimal.Decimal
+	UnitPrice          decimal.Decimal
+	LineDiscountAmount decimal.Decimal
+	BatchCode          string
+	SerialCode         string
+}
+
+// AddLine appends a line to a DRAFT document. Business-document
+// immutability (brief §31): a FINALIZED or CANCELLED document rejects
+// this with ErrDocumentNotDraft. The catalogue lookup (for the HSN/SAC
+// snapshot) runs BEFORE this method opens its own transaction, not nested
+// inside it — a deliberate choice, same reasoning taxation.Service's own
+// doc comment gives for CalculateAndSnapshot: a plain read doesn't need
+// single-transaction atomicity with the write that follows, and this
+// avoids a nested RunScoped call entirely rather than relying on it being
+// merely harmless.
+func (s *Service) AddLine(ctx context.Context, principal permissions.Principal, p AddLineParams) (*domain.DocumentLine, error) {
+	if err := s.editDraft(ctx, principal); err != nil {
+		return nil, err
+	}
+	if p.LineDiscountAmount.IsPositive() {
+		if err := s.discountPerm(ctx, principal); err != nil {
+			return nil, err
+		}
+	}
+	_, product, err := s.catalogue.GetVariantWithProduct(ctx, principal, p.ProductVariantID)
+	if err != nil {
+		return nil, fmt.Errorf("sales: resolving product for line: %w", err)
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("sales: generating sales_document_line id: %w", err)
+	}
+	now := s.now()
+	var line *domain.DocumentLine
+	err = s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		doc, err := s.documents.GetByID(ctx, p.DocumentID)
+		if err != nil {
+			return err
+		}
+		if doc.Status != domain.StatusDraft {
+			return domain.ErrDocumentNotDraft
+		}
+		existing, err := s.lines.ListByDocument(ctx, p.DocumentID)
+		if err != nil {
+			return err
+		}
+		unitPrice, err := money.New(p.UnitPrice, doc.CurrencyCode)
+		if err != nil {
+			return fmt.Errorf("sales: %w", err)
+		}
+		discount, err := money.New(p.LineDiscountAmount, doc.CurrencyCode)
+		if err != nil {
+			return fmt.Errorf("sales: %w", err)
+		}
+		lineTotalDecimal := p.Quantity.Mul(p.UnitPrice).Sub(p.LineDiscountAmount)
+		lineTotal, err := money.New(lineTotalDecimal, doc.CurrencyCode)
+		if err != nil {
+			return fmt.Errorf("sales: %w", err)
+		}
+		line = &domain.DocumentLine{
+			ID: id, OrganisationID: principal.OrganisationID, SalesDocumentID: p.DocumentID,
+			LineNumber: len(existing) + 1, ProductVariantID: p.ProductVariantID, UnitID: p.UnitID,
+			Quantity: p.Quantity, UnitPrice: unitPrice, LineDiscountAmount: discount,
+			HSNSACCode: product.HSNSACCode, LineTotal: lineTotal,
+			BatchCode: p.BatchCode, SerialCode: p.SerialCode, CreatedAt: now,
+		}
+		if err := s.lines.Create(ctx, line); err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, audit.Entry{
+			OrganisationID: principal.OrganisationID, ActorUserID: &principal.UserID, ActorType: audit.ActorUser,
+			Action: "sales_document_line.added", EntityType: "sales_document_line", EntityID: &id,
+			AfterState: map[string]any{"document_id": p.DocumentID, "quantity": p.Quantity.String(), "unit_price": p.UnitPrice.String()}, At: now,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return line, nil
+}
+
+// FinalizeDocument transitions a DRAFT document to FINALIZED. In one
+// transaction: calculates and snapshots tax (taxation.Service via
+// gstindia), posts stock movements for StockAffecting document types
+// (inventory.RecordMovementForOtherModule — rejecting finalization if
+// stock is insufficient and the warehouse policy disallows negative
+// stock, same as purchases), and updates the document's status and
+// totals. If any step fails, nothing partial is left FINALIZED (brief
+// §32).
+func (s *Service) FinalizeDocument(ctx context.Context, principal permissions.Principal, documentID uuid.UUID) (*domain.Document, error) {
+	if err := s.finalizePerm(ctx, principal); err != nil {
+		return nil, err
+	}
+	now := s.now()
+	var doc *domain.Document
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		doc, err = s.documents.GetByID(ctx, documentID)
+		if err != nil {
+			return err
+		}
+		if doc.Status != domain.StatusDraft {
+			return domain.ErrDocumentNotDraft
+		}
+		lines, err := s.lines.ListByDocument(ctx, documentID)
+		if err != nil {
+			return err
+		}
+		if len(lines) == 0 {
+			return domain.ErrEmptyDocument
+		}
+
+		legalEntity, err := s.organisation.GetLegalEntityForOtherModule(ctx, principal.OrganisationID, doc.LegalEntityID)
+		if err != nil {
+			return fmt.Errorf("sales: resolving supplier legal entity: %w", err)
+		}
+
+		taxLines := make([]taxdomain.TaxableLine, 0, len(lines))
+		for _, l := range lines {
+			taxLines = append(taxLines, taxdomain.TaxableLine{
+				LineRef:     fmt.Sprintf("%d", l.LineNumber),
+				HSNSACCode:  l.HSNSACCode,
+				Amount:      l.LineTotal,
+				PricingMode: doc.PricingMode,
+			})
+		}
+		taxDoc, _, _, err := s.taxation.CalculateAndSnapshotTx(ctx, taxationapp.SnapshotRequest{
+			ReferenceType: "sales_document",
+			ReferenceID:   &doc.ID,
+			Input: taxdomain.TaxCalculationInput{
+				OrganisationID:    principal.OrganisationID,
+				Lines:             taxLines,
+				SupplierStateCode: legalEntity.GSTStateCode,
+				SupplyPlace:       taxdomain.PlaceOfSupply{StateCode: doc.PlaceOfSupplyStateCode},
+				DocumentDate:      doc.IssueDate,
+				SupplyType:        taxdomain.SupplyB2C,
+				CurrencyCode:      doc.CurrencyCode,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("calculating tax: %w", err)
+		}
+
+		if domain.StockAffecting(doc.DocumentType) {
+			movementType := inventorydomain.MovementSale
+			if domain.MovementTypeFor(doc.DocumentType) == "SALE_RETURN" {
+				movementType = inventorydomain.MovementSaleReturn
+			}
+			for _, line := range lines {
+				params := inventoryapp.RecordMovementParams{
+					WarehouseID: doc.WarehouseID, ProductVariantID: line.ProductVariantID, MovementType: movementType,
+					UnitID: line.UnitID, Quantity: line.Quantity,
+					ReferenceType: "sales_document", ReferenceID: &doc.ID,
+					Notes: fmt.Sprintf("%s %s line %d", doc.DocumentType, doc.DocumentNumber, line.LineNumber),
+				}
+				if line.BatchCode != "" {
+					batchCode := line.BatchCode
+					params.BatchCode = &batchCode
+				}
+				if line.SerialCode != "" {
+					serialCode := line.SerialCode
+					params.SerialCode = &serialCode
+				}
+				if _, err := s.inventory.RecordMovementForOtherModule(ctx, principal.OrganisationID, principal.UserID, params); err != nil {
+					return fmt.Errorf("posting stock movement for line %d: %w", line.LineNumber, err)
+				}
+			}
+		}
+
+		if err := s.documents.UpdateFinalizedTotals(ctx, documentID, taxDoc.ID, taxDoc.GrandTotal.Decimal()); err != nil {
+			return err
+		}
+		if err := s.documents.UpdateStatus(ctx, documentID, domain.StatusFinalized, &now); err != nil {
+			return err
+		}
+		doc.Status = domain.StatusFinalized
+		doc.FinalizedAt = &now
+		doc.TaxDocumentID = &taxDoc.ID
+		grandTotal := taxDoc.GrandTotal
+		doc.GrandTotalAmount = &grandTotal
+
+		return s.audit.Record(ctx, audit.Entry{
+			OrganisationID: principal.OrganisationID, ActorUserID: &principal.UserID, ActorType: audit.ActorUser,
+			Action: "sales_document.finalized", EntityType: "sales_document", EntityID: &documentID,
+			AfterState: map[string]any{"document_type": string(doc.DocumentType), "document_number": doc.DocumentNumber,
+				"line_count": len(lines), "grand_total": taxDoc.GrandTotal.StringFixed(money.RoundHalfUp)}, At: now,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+// ConvertDocument creates a new DRAFT document of targetType, copying the
+// source document's header and lines (fresh line numbers, editable before
+// the new document is itself finalized) — the estimate/quotation->invoice,
+// sales-order->invoice, and delivery-challan->invoice conversion flows
+// (brief §5) are all this one generic operation parameterized by
+// targetType, not three separate code paths. The source must be
+// FINALIZED (a DRAFT quotation isn't confirmed yet — converting an
+// unconfirmed draft would be premature) — this is a judgment call, not a
+// brief-mandated rule; a business that wants to convert from DRAFT can
+// finalize the quotation first, which costs nothing since a quotation
+// finalize doesn't affect stock.
+func (s *Service) ConvertDocument(ctx context.Context, principal permissions.Principal, sourceDocumentID uuid.UUID, targetType domain.DocumentType) (*domain.Document, error) {
+	if err := s.create(ctx, principal); err != nil {
+		return nil, err
+	}
+	if !domain.ValidDocumentType(targetType) {
+		return nil, domain.ErrInvalidDocumentType
+	}
+	source, sourceLines, err := s.GetDocument(ctx, principal, sourceDocumentID)
+	if err != nil {
+		return nil, err
+	}
+	if source.Status != domain.StatusFinalized {
+		return nil, domain.ErrDocumentNotFinalized
+	}
+	refID := source.ID
+	target, err := s.CreateDocument(ctx, principal, CreateDocumentParams{
+		LegalEntityID: source.LegalEntityID, BranchID: source.BranchID, WarehouseID: source.WarehouseID,
+		CustomerPartyID: source.CustomerPartyID, DocumentType: targetType, ReferenceDocumentID: &refID,
+		IssueDate: s.now(), BillingAddressID: source.BillingAddressID, ShippingAddressID: source.ShippingAddressID,
+		CustomerTaxRegistrationID: source.CustomerTaxRegistrationID, PlaceOfSupplyStateCode: source.PlaceOfSupplyStateCode,
+		SalespersonUserID: source.SalespersonUserID, PriceListID: source.PriceListID, CurrencyCode: source.CurrencyCode,
+		BaseCurrencyCode: source.BaseCurrencyCode, ExchangeRate: source.ExchangeRate, PricingMode: source.PricingMode,
+		CustomerReference: source.CustomerReference, Transporter: source.Transporter, VehicleNumber: source.VehicleNumber,
+		ShippingTerms: source.ShippingTerms, Notes: source.Notes, TermsAndConditions: source.TermsAndConditions,
+		PaymentTermsDays: source.PaymentTermsDays,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, sl := range sourceLines {
+		if _, err := s.AddLine(ctx, principal, AddLineParams{
+			DocumentID: target.ID, ProductVariantID: sl.ProductVariantID, UnitID: sl.UnitID,
+			Quantity: sl.Quantity, UnitPrice: sl.UnitPrice.Decimal(), LineDiscountAmount: sl.LineDiscountAmount.Decimal(),
+			BatchCode: sl.BatchCode, SerialCode: sl.SerialCode,
+		}); err != nil {
+			return nil, fmt.Errorf("sales: copying line %d during conversion: %w", sl.LineNumber, err)
+		}
+	}
+	return target, nil
+}

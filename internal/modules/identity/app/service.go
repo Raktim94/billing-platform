@@ -88,13 +88,17 @@ type BootstrapParams struct {
 	DefaultTimezone     string
 	LegalEntityName     string
 	CountryCode         string
-	BranchCode          string
-	BranchName          string
-	WarehouseCode       string
-	WarehouseName       string
-	OwnerEmail          string
-	OwnerFullName       string
-	OwnerPassword       string
+	// GSTIN/GSTStateCode are optional (Stage 5b addition) — passed
+	// through to orgapp.Service.Provision.
+	GSTIN         string
+	GSTStateCode  string
+	BranchCode    string
+	BranchName    string
+	WarehouseCode string
+	WarehouseName string
+	OwnerEmail    string
+	OwnerFullName string
+	OwnerPassword string
 }
 
 type BootstrapResult struct {
@@ -135,6 +139,8 @@ func (s *Service) Bootstrap(ctx context.Context, p BootstrapParams) (BootstrapRe
 		DefaultTimezone:     p.DefaultTimezone,
 		LegalEntityName:     p.LegalEntityName,
 		CountryCode:         p.CountryCode,
+		GSTIN:               p.GSTIN,
+		GSTStateCode:        p.GSTStateCode,
 		BranchCode:          p.BranchCode,
 		BranchName:          p.BranchName,
 		WarehouseCode:       p.WarehouseCode,

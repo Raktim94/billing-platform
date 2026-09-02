@@ -33,9 +33,15 @@ type LegalEntity struct {
 	LegalName        string
 	CountryCode      string
 	BaseCurrencyCode string
-	Status           Status
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// GSTIN/GSTStateCode are additive (migrations/0017_legal_entity_gstin,
+	// Stage 5b) — Stage 2 predates the tax module. Nullable: a legal
+	// entity in a country without GST, or one not yet registered, has
+	// neither.
+	GSTIN        string
+	GSTStateCode string
+	Status       Status
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type Branch struct {

@@ -344,6 +344,34 @@ func (s *Service) CreateVariant(ctx context.Context, principal permissions.Princ
 	return v, nil
 }
 
+// GetVariantWithProduct returns a variant and its parent product together
+// — added for Stage 5b (sales), which needs a line's HSN/SAC and base
+// unit of measure (both live on Product, not ProductVariant) starting
+// from just the variant ID a sales line references. Follows
+// docs/architecture.md §2 ("cross-module calls go through the other
+// module's application-layer interface") rather than sales reaching into
+// catalogue's repositories directly.
+func (s *Service) GetVariantWithProduct(ctx context.Context, principal permissions.Principal, variantID uuid.UUID) (*domain.ProductVariant, *domain.Product, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, nil, err
+	}
+	var variant *domain.ProductVariant
+	var product *domain.Product
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		variant, err = s.variants.GetByID(ctx, variantID)
+		if err != nil {
+			return err
+		}
+		product, err = s.products.GetByID(ctx, variant.ProductID)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return variant, product, nil
+}
+
 func (s *Service) ListVariantsByProduct(ctx context.Context, principal permissions.Principal, productID uuid.UUID) ([]*domain.ProductVariant, error) {
 	if err := s.view(ctx, principal); err != nil {
 		return nil, err

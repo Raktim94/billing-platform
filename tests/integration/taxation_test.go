@@ -85,7 +85,7 @@ func TestTaxation_CalculateAndSnapshot_PersistsAndIsRetrievable(t *testing.T) {
 
 	// Re-fetch by reference — proves the snapshot round-trips through
 	// Postgres correctly, not just that the in-memory result looked right.
-	refetched, refetchedLines, err := taxSvc.GetByReference(ctx, principal.OrganisationID, "STANDALONE_TEST", refID)
+	refetched, refetchedLines, _, err := taxSvc.GetByReference(ctx, principal.OrganisationID, "STANDALONE_TEST", refID)
 	if err != nil {
 		t.Fatalf("GetByReference: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestTaxation_FinalizedSnapshot_UnaffectedByLaterRateMasterUpdate(t *testing
 
 	// And the very first persisted snapshot, fetched back, is of course
 	// still exactly what it always was — nothing mutates it.
-	refetched, _, err := taxSvc.GetByReference(ctx, principal.OrganisationID, "STANDALONE_TEST", refID)
+	refetched, _, _, err := taxSvc.GetByReference(ctx, principal.OrganisationID, "STANDALONE_TEST", refID)
 	if err != nil {
 		t.Fatalf("GetByReference (original): %v", err)
 	}

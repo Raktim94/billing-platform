@@ -19,6 +19,13 @@ import (
 	"billing-platform/internal/platform/database"
 )
 
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 // --- Organisations ---
 
 type OrganisationRepo struct{ pool *database.Pool }
@@ -61,9 +68,10 @@ func NewLegalEntityRepo(pool *database.Pool) *LegalEntityRepo { return &LegalEnt
 
 func (r *LegalEntityRepo) Create(ctx context.Context, le *domain.LegalEntity) error {
 	const q = `
-		INSERT INTO legal_entities (id, organisation_id, legal_name, country_code, base_currency_code, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`
-	_, err := r.pool.Q(ctx).Exec(ctx, q, le.ID, le.OrganisationID, le.LegalName, le.CountryCode, le.BaseCurrencyCode, string(le.Status), le.CreatedAt)
+		INSERT INTO legal_entities (id, organisation_id, legal_name, country_code, base_currency_code, gstin, gst_state_code, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`
+	_, err := r.pool.Q(ctx).Exec(ctx, q, le.ID, le.OrganisationID, le.LegalName, le.CountryCode, le.BaseCurrencyCode,
+		nullIfEmpty(le.GSTIN), nullIfEmpty(le.GSTStateCode), string(le.Status), le.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("organisation: inserting legal_entity: %w", err)
 	}
@@ -72,12 +80,12 @@ func (r *LegalEntityRepo) Create(ctx context.Context, le *domain.LegalEntity) er
 
 func (r *LegalEntityRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.LegalEntity, error) {
 	const q = `
-		SELECT id, organisation_id, legal_name, country_code, base_currency_code, status, created_at, updated_at
+		SELECT id, organisation_id, legal_name, country_code, base_currency_code, COALESCE(gstin, ''), COALESCE(gst_state_code, ''), status, created_at, updated_at
 		FROM legal_entities WHERE id = $1`
 	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
 	var le domain.LegalEntity
 	var status string
-	if err := row.Scan(&le.ID, &le.OrganisationID, &le.LegalName, &le.CountryCode, &le.BaseCurrencyCode, &status, &le.CreatedAt, &le.UpdatedAt); err != nil {
+	if err := row.Scan(&le.ID, &le.OrganisationID, &le.LegalName, &le.CountryCode, &le.BaseCurrencyCode, &le.GSTIN, &le.GSTStateCode, &status, &le.CreatedAt, &le.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
 		}
@@ -89,7 +97,7 @@ func (r *LegalEntityRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Le
 
 func (r *LegalEntityRepo) ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*domain.LegalEntity, error) {
 	const q = `
-		SELECT id, organisation_id, legal_name, country_code, base_currency_code, status, created_at, updated_at
+		SELECT id, organisation_id, legal_name, country_code, base_currency_code, COALESCE(gstin, ''), COALESCE(gst_state_code, ''), status, created_at, updated_at
 		FROM legal_entities WHERE organisation_id = $1 ORDER BY created_at`
 	rows, err := r.pool.Q(ctx).Query(ctx, q, orgID)
 	if err != nil {
@@ -101,7 +109,7 @@ func (r *LegalEntityRepo) ListByOrganisation(ctx context.Context, orgID uuid.UUI
 	for rows.Next() {
 		var le domain.LegalEntity
 		var status string
-		if err := rows.Scan(&le.ID, &le.OrganisationID, &le.LegalName, &le.CountryCode, &le.BaseCurrencyCode, &status, &le.CreatedAt, &le.UpdatedAt); err != nil {
+		if err := rows.Scan(&le.ID, &le.OrganisationID, &le.LegalName, &le.CountryCode, &le.BaseCurrencyCode, &le.GSTIN, &le.GSTStateCode, &status, &le.CreatedAt, &le.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("organisation: scanning legal_entity row: %w", err)
 		}
 		le.Status = domain.Status(status)

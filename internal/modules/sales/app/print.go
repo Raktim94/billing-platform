@@ -1,0 +1,194 @@
+package app
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+
+	orgdomain "billing-platform/internal/modules/organisation/domain"
+	"billing-platform/internal/modules/sales/domain"
+	"billing-platform/internal/modules/sales/printing"
+	"billing-platform/internal/platform/money"
+	"billing-platform/internal/platform/permissions"
+)
+
+// BuildInvoiceData assembles a printing.InvoiceData for a document —
+// requires sales.view (this is a read, not a mutation, so it uses the
+// view permission, not finalize) — by pulling together this module's own
+// document/lines, the taxation snapshot (Stage 5a), the customer's
+// contact details, and the seller's legal entity, exactly the set of
+// modules docs/architecture.md §19 says an A4 GST invoice needs. Only
+// FINALIZED documents have a tax snapshot to print from; printing a DRAFT
+// is not supported (there is nothing statutory to print yet) and returns
+// domain.ErrDocumentNotDraft's sibling check inverted — a DRAFT has no
+// TaxDocumentID, so the nil check below is what actually enforces this,
+// deliberately, rather than adding a redundant status check.
+func (s *Service) BuildInvoiceData(ctx context.Context, principal permissions.Principal, documentID uuid.UUID) (*printing.InvoiceData, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, err
+	}
+	doc, lines, err := s.GetDocument(ctx, principal, documentID)
+	if err != nil {
+		return nil, err
+	}
+	if doc.TaxDocumentID == nil {
+		return nil, fmt.Errorf("sales: %w: document has not been finalized yet, nothing to print", domain.ErrDocumentNotDraft)
+	}
+
+	taxDoc, taxLines, componentsByLine, err := s.taxation.GetByReference(ctx, principal.OrganisationID, "sales_document", doc.ID)
+	if err != nil {
+		return nil, fmt.Errorf("sales: loading tax snapshot for print: %w", err)
+	}
+	taxLineByRef := make(map[string]*struct {
+		CGSTRate, CGSTValue, SGSTRate, SGSTValue, IGSTRate, IGSTValue, TaxableValue string
+	})
+	for _, tl := range taxLines {
+		entry := &struct {
+			CGSTRate, CGSTValue, SGSTRate, SGSTValue, IGSTRate, IGSTValue, TaxableValue string
+		}{TaxableValue: tl.TaxableAmount.StringFixed(money.RoundHalfUp)}
+		for _, c := range componentsByLine[tl.ID] {
+			v := c.Amount.StringFixed(money.RoundHalfUp)
+			r := c.Rate.String()
+			switch c.ComponentType {
+			case "CGST":
+				entry.CGSTRate, entry.CGSTValue = r, v
+			case "SGST", "UTGST":
+				entry.SGSTRate, entry.SGSTValue = r, v
+			case "IGST":
+				entry.IGSTRate, entry.IGSTValue = r, v
+			}
+		}
+		taxLineByRef[tl.LineRef] = entry
+	}
+
+	// GetLegalEntityForOtherModule is nest-safe (no own transaction) —
+	// correct when FinalizeDocument calls it from inside an already-open
+	// RunScoped block, but BuildInvoiceData has no such block of its own
+	// (its other calls, GetDocument/GetByReference, each open and close
+	// their own). Wrap this specific call so its RLS-protected read
+	// actually has app.current_organisation_id set — omitting this was a
+	// real bug caught by TestSales_Print_A4Invoice_RendersNonEmptyPDF:
+	// without it, the read silently failed closed as ErrNotFound.
+	var legalEntity *orgdomain.LegalEntity
+	err = s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		legalEntity, err = s.organisation.GetLegalEntityForOtherModule(ctx, principal.OrganisationID, doc.LegalEntityID)
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("sales: loading seller legal entity for print: %w", err)
+	}
+	customer, err := s.contacts.GetParty(ctx, principal, doc.CustomerPartyID)
+	if err != nil {
+		return nil, fmt.Errorf("sales: loading customer for print: %w", err)
+	}
+	var billAddr, shipAddr []string
+	if doc.BillingAddressID != nil || doc.ShippingAddressID != nil {
+		addresses, err := s.contacts.ListAddresses(ctx, principal, doc.CustomerPartyID)
+		if err != nil {
+			return nil, fmt.Errorf("sales: loading customer addresses for print: %w", err)
+		}
+		for _, a := range addresses {
+			if doc.BillingAddressID != nil && a.ID == *doc.BillingAddressID {
+				billAddr = []string{a.Line1, a.Line2, fmt.Sprintf("%s, %s %s", a.City, a.State, a.PostalCode)}
+			}
+			if doc.ShippingAddressID != nil && a.ID == *doc.ShippingAddressID {
+				shipAddr = []string{a.Line1, a.Line2, fmt.Sprintf("%s, %s %s", a.City, a.State, a.PostalCode)}
+			}
+		}
+	}
+	var customerGSTIN string
+	if doc.CustomerTaxRegistrationID != nil {
+		regs, err := s.contacts.ListTaxRegistrations(ctx, principal, doc.CustomerPartyID)
+		if err != nil {
+			return nil, fmt.Errorf("sales: loading customer tax registrations for print: %w", err)
+		}
+		for _, reg := range regs {
+			if reg.ID == *doc.CustomerTaxRegistrationID {
+				customerGSTIN = reg.RegistrationNumber
+			}
+		}
+	}
+
+	items := make([]printing.LineItem, 0, len(lines))
+	for _, l := range lines {
+		_, product, err := s.catalogue.GetVariantWithProduct(ctx, principal, l.ProductVariantID)
+		if err != nil {
+			return nil, fmt.Errorf("sales: resolving product for print, line %d: %w", l.LineNumber, err)
+		}
+		tl := taxLineByRef[fmt.Sprintf("%d", l.LineNumber)]
+		item := printing.LineItem{
+			SNo: l.LineNumber, Description: product.Name, HSNSAC: l.HSNSACCode,
+			Quantity: l.Quantity.String(), Rate: l.UnitPrice.StringFixed(money.RoundHalfUp),
+			LineTotal: l.LineTotal.StringFixed(money.RoundHalfUp),
+		}
+		if tl != nil {
+			item.TaxableValue = tl.TaxableValue
+			item.CGSTRate, item.CGSTValue = tl.CGSTRate, tl.CGSTValue
+			item.SGSTRate, item.SGSTValue = tl.SGSTRate, tl.SGSTValue
+			item.IGSTRate, item.IGSTValue = tl.IGSTRate, tl.IGSTValue
+		}
+		items = append(items, item)
+	}
+
+	var totalCGST, totalSGST, totalIGST, totalCess string
+	for _, tl := range taxLines {
+		for _, c := range componentsByLine[tl.ID] {
+			v := c.Amount.StringFixed(money.RoundHalfUp)
+			switch c.ComponentType {
+			case "CGST":
+				totalCGST = addFixed(totalCGST, v)
+			case "SGST", "UTGST":
+				totalSGST = addFixed(totalSGST, v)
+			case "IGST":
+				totalIGST = addFixed(totalIGST, v)
+			case "CESS":
+				totalCess = addFixed(totalCess, v)
+			}
+		}
+	}
+
+	return &printing.InvoiceData{
+		Seller:            printing.SellerInfo{LegalName: legalEntity.LegalName, GSTIN: legalEntity.GSTIN},
+		BillTo:            printing.PartyInfo{Name: customer.LegalName, GSTIN: customerGSTIN, AddressLines: billAddr},
+		ShipTo:            printing.PartyInfo{Name: customer.LegalName, AddressLines: shipAddr},
+		DocumentTypeLabel: printing.DocumentTypeLabel(doc.DocumentType),
+		DocumentNumber:    doc.DocumentNumber,
+		IssueDate:         doc.IssueDate,
+		DueDate:           doc.DueDate,
+		PlaceOfSupply:     doc.PlaceOfSupplyStateCode,
+		CustomerReference: doc.CustomerReference,
+		Transporter:       doc.Transporter,
+		VehicleNumber:     doc.VehicleNumber,
+		Lines:             items,
+		SubtotalTaxable:   taxDoc.TotalTaxableAmount.StringFixed(money.RoundHalfUp),
+		TotalCGST:         totalCGST,
+		TotalSGST:         totalSGST,
+		TotalIGST:         totalIGST,
+		TotalCess:         totalCess,
+		GrandTotal:        taxDoc.GrandTotal.StringFixed(money.RoundHalfUp),
+		// PreviousBalance intentionally left nil — see printing.InvoiceData's
+		// doc comment: no customer ledger exists until Stage 6.
+		Notes:              doc.Notes,
+		TermsAndConditions: doc.TermsAndConditions,
+	}, nil
+}
+
+// addFixed adds two already-StringFixed decimal strings ("" treated as
+// zero), returning a StringFixed result — a display-layer helper for
+// re-summing already-computed, already-rounded component amounts into a
+// document total. Not a tax calculation: every value it touches was
+// already computed and rounded by gstindia.Engine.
+func addFixed(a, b string) string {
+	da, errA := decimal.NewFromString(a)
+	if errA != nil {
+		da = decimal.Zero
+	}
+	db, errB := decimal.NewFromString(b)
+	if errB != nil {
+		db = decimal.Zero
+	}
+	return da.Add(db).StringFixed(2)
+}

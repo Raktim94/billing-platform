@@ -60,10 +60,17 @@ type ProvisionParams struct {
 	DefaultTimezone     string
 	LegalEntityName     string
 	CountryCode         string
-	BranchCode          string
-	BranchName          string
-	WarehouseCode       string
-	WarehouseName       string
+	// GSTIN/GSTStateCode are optional (Stage 5b addition) — a fresh
+	// organisation can provision without GST registration and add it
+	// later via CreateLegalEntity for a second/updated legal entity;
+	// most test fixtures that exercise sales/tax flows set these directly
+	// here for convenience.
+	GSTIN         string
+	GSTStateCode  string
+	BranchCode    string
+	BranchName    string
+	WarehouseCode string
+	WarehouseName string
 }
 
 type ProvisionResult struct {
@@ -129,6 +136,8 @@ func (s *Service) Provision(ctx context.Context, p ProvisionParams) (ProvisionRe
 			LegalName:        p.LegalEntityName,
 			CountryCode:      p.CountryCode,
 			BaseCurrencyCode: p.DefaultCurrencyCode,
+			GSTIN:            p.GSTIN,
+			GSTStateCode:     p.GSTStateCode,
 			Status:           domain.StatusActive,
 			CreatedAt:        now,
 			UpdatedAt:        now,
@@ -208,10 +217,43 @@ func (s *Service) GetOrganisation(ctx context.Context, principal permissions.Pri
 	return result, err
 }
 
+// GetLegalEntityForOtherModule is a cross-module read (added Stage 5b) —
+// sales.FinalizeDocument needs the supplier-side GSTIN/state code, and
+// should authorize on ITS OWN "sales.finalize" check, not require the
+// calling principal to additionally hold organisation-settings
+// permissions unrelated to billing. No permission check of its own, by
+// design — same pattern and same rationale as
+// inventory.RecordMovementForOtherModule and
+// taxation.Service.CalculateAndSnapshotTx: the caller's own
+// already-checked application-layer method is what authorizes this call.
+// Not mounted as an HTTP endpoint for that reason — a direct "view legal
+// entity" endpoint, if one is added later, needs its own real permission
+// check and should be a separate method, not this one reused unsafely.
+//
+// Also does NOT open its own transaction (unlike most of this module's
+// other methods) — callers like sales.FinalizeDocument call this from
+// inside their own already-open RunScoped block, so it must be
+// nested-transaction-safe the same way inventory.RecordMovementForOtherModule
+// and taxation.Service.CalculateAndSnapshotTx are: it reads through
+// database.Pool.Q(ctx), which picks up the caller's active transaction
+// from ctx automatically. Calling this with no active transaction in ctx
+// still works (Q falls back to the bare pool) but with no organisation
+// scope set, which fails closed against legal_entities' RLS policy — same
+// misuse class documented on those other two methods.
+func (s *Service) GetLegalEntityForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.LegalEntity, error) {
+	return s.legalEntities.GetByID(ctx, id)
+}
+
 type CreateLegalEntityParams struct {
 	LegalName        string
 	CountryCode      string
 	BaseCurrencyCode string
+	// GSTIN/GSTStateCode are additive (migrations/0017, Stage 5b) — a
+	// legal entity's own GST registration, needed as the supplier side of
+	// a tax calculation. Optional: a country without GST, or a
+	// not-yet-registered entity, leaves both empty.
+	GSTIN        string
+	GSTStateCode string
 }
 
 func (s *Service) CreateLegalEntity(ctx context.Context, principal permissions.Principal, p CreateLegalEntityParams) (*domain.LegalEntity, error) {
@@ -229,6 +271,8 @@ func (s *Service) CreateLegalEntity(ctx context.Context, principal permissions.P
 		LegalName:        p.LegalName,
 		CountryCode:      p.CountryCode,
 		BaseCurrencyCode: p.BaseCurrencyCode,
+		GSTIN:            p.GSTIN,
+		GSTStateCode:     p.GSTStateCode,
 		Status:           domain.StatusActive,
 		CreatedAt:        now,
 		UpdatedAt:        now,
