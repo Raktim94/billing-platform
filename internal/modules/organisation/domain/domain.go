@@ -1,0 +1,85 @@
+// Package domain holds the organisation module's entity types and
+// repository interfaces (docs/architecture.md §2 — domain defines the
+// interface, pg implements it). No I/O, no framework imports.
+package domain
+
+import (
+	"context"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type Status string
+
+const (
+	StatusActive    Status = "ACTIVE"
+	StatusSuspended Status = "SUSPENDED"
+)
+
+type Organisation struct {
+	ID                  uuid.UUID
+	Name                string
+	DefaultCurrencyCode string
+	DefaultTimezone     string
+	Status              Status
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type LegalEntity struct {
+	ID               uuid.UUID
+	OrganisationID   uuid.UUID
+	LegalName        string
+	CountryCode      string
+	BaseCurrencyCode string
+	Status           Status
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type Branch struct {
+	ID             uuid.UUID
+	OrganisationID uuid.UUID
+	LegalEntityID  uuid.UUID
+	Code           string
+	Name           string
+	Timezone       string
+	Status         Status
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type Warehouse struct {
+	ID             uuid.UUID
+	OrganisationID uuid.UUID
+	BranchID       uuid.UUID
+	Code           string
+	Name           string
+	Status         Status
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type OrganisationRepository interface {
+	Create(ctx context.Context, o *Organisation) error
+	GetByID(ctx context.Context, id uuid.UUID) (*Organisation, error)
+}
+
+type LegalEntityRepository interface {
+	Create(ctx context.Context, le *LegalEntity) error
+	GetByID(ctx context.Context, id uuid.UUID) (*LegalEntity, error)
+	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*LegalEntity, error)
+}
+
+type BranchRepository interface {
+	Create(ctx context.Context, b *Branch) error
+	GetByID(ctx context.Context, id uuid.UUID) (*Branch, error)
+	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*Branch, error)
+}
+
+type WarehouseRepository interface {
+	Create(ctx context.Context, w *Warehouse) error
+	GetByID(ctx context.Context, id uuid.UUID) (*Warehouse, error)
+	ListByBranch(ctx context.Context, branchID uuid.UUID) ([]*Warehouse, error)
+}

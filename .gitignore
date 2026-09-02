@@ -1,0 +1,32 @@
+# Go
+/bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!deploy/**/*.example
+
+# Node / web (apps/web, once it exists)
+node_modules/
+dist/
+.vite/
+
+# Rust / Tauri (apps/desktop, once it exists)
+target/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local scratch
+*.local.sql
+coverage.out
+coverage.html
