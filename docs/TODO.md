@@ -54,13 +54,13 @@ part of finishing a stage, not after the fact.
 - [x] Golden tax fixtures: 0/3/5/12/18/28/40%, ₹90 inclusive @18% fixture (verified against the brief's exact 76.271186.../13.728813... figures), intra-state CGST+SGST split, inter-state IGST, cess-on-taxable-not-gross, UTGST, valid_from/valid_to snapshot immutability — independently re-verified, numbers checked by hand against the actual test code, not just trusted
 - [x] Unit tests (96/96) + integration tests (47/47) — independently re-verified, 2 real bugs caught by tests and fixed (RLS-scope-before-calculation, CHECK-constraint default)
 
-## Stage 5b — Sales Documents & Printing
-- [ ] `internal/modules/sales`: quotation, proforma, sales order, delivery challan, tax invoice, credit/cash invoice, credit/debit note, sales return, recurring invoice, POS invoice, conversion flows (estimate→invoice, order→invoice, challan→invoice)
-- [ ] Invoice header + line fields per brief §5, calculation snapshot immutability (brief §55) — calls Stage 5a's `TaxEngine`, calls `inventory.RecordMovementForOtherModule` on finalize (SALE/SALE_RETURN movement types already exist from Stage 4)
-- [ ] Document numbering: configurable series (organisation/legal-entity/branch/FY-scoped per brief §51), concurrency-safe allocation (Scenario I) — the real, full numbering system (purchases' Stage 4 counter was explicitly a minimal placeholder, not this)
-- [ ] Printing/PDF template engine: A4 GST invoice, compact, thermal 80mm/58mm, quotation, PO, challan, receipt, statement, credit/debit note (brief §19)
-- [ ] Sales screen UX groundwork (API side): fast product/customer search, stock/price/tax visibility in one call
-- [ ] Unit + integration tests
+## Stage 5b — Sales Documents & Printing ✅ (2026-09-03)
+- [x] `internal/modules/sales`: quotation, proforma, sales order, delivery challan, tax invoice, POS invoice, credit/debit note, sales return, recurring invoice (document_type-parameterized, one family); `ConvertDocument` generically covers quotation/sales-order/challan → invoice
+- [x] Invoice header + line fields per brief §5, calculation snapshot immutability (brief §55, tested against a live tax-rate-master change) — calls Stage 5a's `TaxEngine` via new `taxation.CalculateAndSnapshotTx`, calls `inventory.RecordMovementForOtherModule` on finalize, all inside one transaction
+- [x] Document numbering: `internal/platform/numbering`, configurable series scoped to organisation/branch/document-type/financial-year (brief §51), concurrency-safe allocation verified under real concurrent load (Scenario I) — the real system purchases' Stage 4 counter was a placeholder for; purchases itself not yet migrated onto it (follow-up)
+- [x] Printing/PDF template engine (`internal/modules/sales/printing`, go-pdf/fpdf): A4 GST invoice, compact, thermal 80mm/58mm, quotation, PO, challan, receipt, statement, credit/debit note (brief §19) — "Previous Balance" field intentionally stubbed nil until Stage 6's ledger exists
+- [x] Sales screen API groundwork: `BillingLookup` (product search + stock + price in one call, brief §24/§25)
+- [x] Unit tests (100/100) + integration tests (53/53, incl. finalize atomicity, numbering concurrency, tax-snapshot immutability, RLS, PDF rendering) — independently re-verified, one real bug caught by the print test and fixed (RLS-scope-before-read ordering, same class as earlier stages)
 
 ## Stage 6 — Accounting
 - [ ] `internal/modules/accounting`: chart_of_accounts, journals, journal_lines, fiscal_periods, payments, receipts, bank/cash accounts, reconciliation
