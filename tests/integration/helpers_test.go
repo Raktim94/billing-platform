@@ -7,12 +7,25 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	orgapp "billing-platform/internal/modules/organisation/app"
 	orgpg "billing-platform/internal/modules/organisation/pg"
 	"billing-platform/internal/platform/audit"
 	"billing-platform/internal/platform/permissions"
 )
+
+// mustDecimal parses a decimal literal used inline in a test's arrange
+// step, failing the test immediately on a typo rather than propagating a
+// zero-value decimal.Decimal silently into an assertion.
+func mustDecimal(t *testing.T, s string) decimal.Decimal {
+	t.Helper()
+	d, err := decimal.NewFromString(s)
+	if err != nil {
+		t.Fatalf("mustDecimal(%q): %v", s, err)
+	}
+	return d
+}
 
 // noopAuditRecorder discards audit entries — used where a test doesn't
 // care about audit output. Tests that DO care (see audit_test.go) supply

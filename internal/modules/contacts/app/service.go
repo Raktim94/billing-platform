@@ -1,0 +1,271 @@
+// Package app is the contacts module's application/use-case layer.
+package app
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+
+	"billing-platform/internal/modules/contacts/domain"
+	"billing-platform/internal/platform/audit"
+	"billing-platform/internal/platform/database"
+	"billing-platform/internal/platform/permissions"
+)
+
+type Service struct {
+	pool             database.Runner
+	parties          domain.PartyRepository
+	addresses        domain.AddressRepository
+	taxRegistrations domain.TaxRegistrationRepository
+	permissions      *permissions.Checker
+	audit            audit.Recorder
+	now              func() time.Time
+}
+
+func NewService(
+	pool database.Runner,
+	parties domain.PartyRepository,
+	addresses domain.AddressRepository,
+	taxRegistrations domain.TaxRegistrationRepository,
+	checker *permissions.Checker,
+	recorder audit.Recorder,
+) *Service {
+	return &Service{pool: pool, parties: parties, addresses: addresses, taxRegistrations: taxRegistrations, permissions: checker, audit: recorder, now: time.Now}
+}
+
+func (s *Service) view(ctx context.Context, principal permissions.Principal) error {
+	return s.permissions.Require(ctx, principal, "contacts.view", permissions.Scope{})
+}
+
+func (s *Service) manage(ctx context.Context, principal permissions.Principal) error {
+	return s.permissions.Require(ctx, principal, "contacts.manage", permissions.Scope{})
+}
+
+type CreatePartyParams struct {
+	PartyType         domain.PartyType
+	LegalName         string
+	TradeName         string
+	Phone             string
+	Email             string
+	CurrencyCode      string
+	CreditLimitAmount *decimal.Decimal
+	PaymentTermsDays  *int
+	Notes             string
+}
+
+// ValidateCreateParty checks CreatePartyParams against the same rules the
+// database CHECK constraints enforce (migrations/0009_contacts.up.sql), so
+// a bad request comes back as a clean 400 (contacts.domain.ErrInvalidPartyType
+// / ErrLegalNameRequired) instead of a raw driver error. Pure and
+// side-effect free, deliberately exported so it's independently unit
+// testable without a database or fake repositories.
+func ValidateCreateParty(p CreatePartyParams) error {
+	if !domain.ValidPartyType(p.PartyType) {
+		return domain.ErrInvalidPartyType
+	}
+	if p.LegalName == "" {
+		return domain.ErrLegalNameRequired
+	}
+	return nil
+}
+
+func (s *Service) CreateParty(ctx context.Context, principal permissions.Principal, p CreatePartyParams) (*domain.Party, error) {
+	if err := s.manage(ctx, principal); err != nil {
+		return nil, err
+	}
+	if err := ValidateCreateParty(p); err != nil {
+		return nil, err
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("contacts: generating party id: %w", err)
+	}
+	now := s.now()
+	party := &domain.Party{
+		ID: id, OrganisationID: principal.OrganisationID, PartyType: p.PartyType, LegalName: p.LegalName,
+		TradeName: p.TradeName, Phone: p.Phone, Email: p.Email, CurrencyCode: p.CurrencyCode,
+		CreditLimitAmount: p.CreditLimitAmount, PaymentTermsDays: p.PaymentTermsDays, Notes: p.Notes,
+		Status: domain.StatusActive, CreatedAt: now, UpdatedAt: now,
+	}
+	err = s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		if err := s.parties.Create(ctx, party); err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, audit.Entry{
+			OrganisationID: principal.OrganisationID, ActorUserID: &principal.UserID, ActorType: audit.ActorUser,
+			Action: "party.created", EntityType: "party", EntityID: &id,
+			AfterState: map[string]any{"legal_name": p.LegalName, "party_type": p.PartyType}, At: now,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return party, nil
+}
+
+func (s *Service) GetParty(ctx context.Context, principal permissions.Principal, id uuid.UUID) (*domain.Party, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, err
+	}
+	var result *domain.Party
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		result, err = s.parties.GetByID(ctx, id)
+		return err
+	})
+	return result, err
+}
+
+func (s *Service) ListParties(ctx context.Context, principal permissions.Principal) ([]*domain.Party, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, err
+	}
+	var result []*domain.Party
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		result, err = s.parties.ListByOrganisation(ctx, principal.OrganisationID)
+		return err
+	})
+	return result, err
+}
+
+func (s *Service) SearchParties(ctx context.Context, principal permissions.Principal, query string, limit int) ([]*domain.Party, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	var result []*domain.Party
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		result, err = s.parties.SearchByName(ctx, principal.OrganisationID, query, limit)
+		return err
+	})
+	return result, err
+}
+
+type AddAddressParams struct {
+	PartyID     uuid.UUID
+	AddressType domain.AddressType
+	Line1       string
+	Line2       string
+	City        string
+	State       string
+	PostalCode  string
+	CountryCode string
+	IsDefault   bool
+}
+
+func (s *Service) AddAddress(ctx context.Context, principal permissions.Principal, p AddAddressParams) (*domain.Address, error) {
+	if err := s.manage(ctx, principal); err != nil {
+		return nil, err
+	}
+	if !domain.ValidAddressType(p.AddressType) {
+		return nil, domain.ErrInvalidAddressType
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("contacts: generating party_address id: %w", err)
+	}
+	now := s.now()
+	a := &domain.Address{
+		ID: id, OrganisationID: principal.OrganisationID, PartyID: p.PartyID, AddressType: p.AddressType,
+		Line1: p.Line1, Line2: p.Line2, City: p.City, State: p.State, PostalCode: p.PostalCode,
+		CountryCode: p.CountryCode, IsDefault: p.IsDefault, CreatedAt: now, UpdatedAt: now,
+	}
+	err = s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		if err := s.addresses.Create(ctx, a); err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, audit.Entry{
+			OrganisationID: principal.OrganisationID, ActorUserID: &principal.UserID, ActorType: audit.ActorUser,
+			Action: "party_address.created", EntityType: "party_address", EntityID: &id,
+			AfterState: map[string]any{"party_id": p.PartyID, "address_type": p.AddressType}, At: now,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+func (s *Service) ListAddresses(ctx context.Context, principal permissions.Principal, partyID uuid.UUID) ([]*domain.Address, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, err
+	}
+	var result []*domain.Address
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		result, err = s.addresses.ListByParty(ctx, partyID)
+		return err
+	})
+	return result, err
+}
+
+type AddTaxRegistrationParams struct {
+	PartyID            uuid.UUID
+	CountryCode        string
+	RegistrationNumber string
+	StateCode          string
+	IsPrimary          bool
+}
+
+func (s *Service) AddTaxRegistration(ctx context.Context, principal permissions.Principal, p AddTaxRegistrationParams) (*domain.TaxRegistration, error) {
+	if err := s.manage(ctx, principal); err != nil {
+		return nil, err
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("contacts: generating party_tax_registration id: %w", err)
+	}
+	now := s.now()
+	t := &domain.TaxRegistration{
+		ID: id, OrganisationID: principal.OrganisationID, PartyID: p.PartyID, CountryCode: p.CountryCode,
+		RegistrationNumber: p.RegistrationNumber, StateCode: p.StateCode, IsPrimary: p.IsPrimary, CreatedAt: now,
+	}
+	err = s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		if err := s.taxRegistrations.Create(ctx, t); err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, audit.Entry{
+			OrganisationID: principal.OrganisationID, ActorUserID: &principal.UserID, ActorType: audit.ActorUser,
+			Action: "party_tax_registration.created", EntityType: "party_tax_registration", EntityID: &id,
+			AfterState: map[string]any{"party_id": p.PartyID, "registration_number": p.RegistrationNumber}, At: now,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *Service) ListTaxRegistrations(ctx context.Context, principal permissions.Principal, partyID uuid.UUID) ([]*domain.TaxRegistration, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, err
+	}
+	var result []*domain.TaxRegistration
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		result, err = s.taxRegistrations.ListByParty(ctx, partyID)
+		return err
+	})
+	return result, err
+}
+
+// LookupByRegistrationNumber is the GSTIN search path (brief §24).
+func (s *Service) LookupByRegistrationNumber(ctx context.Context, principal permissions.Principal, registrationNumber string) (*domain.TaxRegistration, error) {
+	if err := s.view(ctx, principal); err != nil {
+		return nil, err
+	}
+	var result *domain.TaxRegistration
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		result, err = s.taxRegistrations.GetByRegistrationNumber(ctx, principal.OrganisationID, registrationNumber)
+		return err
+	})
+	return result, err
+}

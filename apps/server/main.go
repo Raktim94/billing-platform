@@ -19,12 +19,21 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	catalogueapp "billing-platform/internal/modules/catalogue/app"
+	cataloguehttp "billing-platform/internal/modules/catalogue/httpapi"
+	cataloguepg "billing-platform/internal/modules/catalogue/pg"
+	contactsapp "billing-platform/internal/modules/contacts/app"
+	contactshttp "billing-platform/internal/modules/contacts/httpapi"
+	contactspg "billing-platform/internal/modules/contacts/pg"
 	identityapp "billing-platform/internal/modules/identity/app"
 	identityhttp "billing-platform/internal/modules/identity/httpapi"
 	identitypg "billing-platform/internal/modules/identity/pg"
 	orgapp "billing-platform/internal/modules/organisation/app"
 	orghttp "billing-platform/internal/modules/organisation/httpapi"
 	orgpg "billing-platform/internal/modules/organisation/pg"
+	pricingapp "billing-platform/internal/modules/pricing/app"
+	pricinghttp "billing-platform/internal/modules/pricing/httpapi"
+	pricingpg "billing-platform/internal/modules/pricing/pg"
 	"billing-platform/internal/platform/audit"
 	"billing-platform/internal/platform/config"
 	appcrypto "billing-platform/internal/platform/crypto"
@@ -117,6 +126,36 @@ func run() error {
 		auditRecorder,
 	)
 
+	catalogueSvc := catalogueapp.NewService(
+		pool,
+		cataloguepg.NewUnitOfMeasureRepo(pool),
+		cataloguepg.NewUnitConversionRepo(pool),
+		cataloguepg.NewCategoryRepo(pool),
+		cataloguepg.NewBrandRepo(pool),
+		cataloguepg.NewProductRepo(pool),
+		cataloguepg.NewProductVariantRepo(pool),
+		cataloguepg.NewBarcodeRepo(pool),
+		permissionsChecker,
+		auditRecorder,
+	)
+
+	contactsSvc := contactsapp.NewService(
+		pool,
+		contactspg.NewPartyRepo(pool),
+		contactspg.NewAddressRepo(pool),
+		contactspg.NewTaxRegistrationRepo(pool),
+		permissionsChecker,
+		auditRecorder,
+	)
+
+	pricingSvc := pricingapp.NewService(
+		pool,
+		pricingpg.NewPriceListRepo(pool),
+		pricingpg.NewPriceListItemRepo(pool),
+		permissionsChecker,
+		auditRecorder,
+	)
+
 	identitySvc := identityapp.NewService(
 		pool,
 		identitypg.NewUserRepo(pool),
@@ -151,6 +190,9 @@ func run() error {
 		r.Group(func(r chi.Router) {
 			r.Use(identityhttp.RequireAuth(identitySvc, cfg.Session.CookieName))
 			orghttp.NewHandlers(orgSvc).Mount(r)
+			cataloguehttp.NewHandlers(catalogueSvc).Mount(r)
+			contactshttp.NewHandlers(contactsSvc).Mount(r)
+			pricinghttp.NewHandlers(pricingSvc).Mount(r)
 		})
 	})
 

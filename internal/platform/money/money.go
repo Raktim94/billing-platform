@@ -5,6 +5,7 @@
 package money
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/shopspring/decimal"
@@ -204,4 +205,32 @@ func (m Money) String() string {
 // that must show a final, statutory-rounded figure.
 func (m Money) StringFixed(mode RoundingMode) string {
 	return m.Round(mode).amount.StringFixed(minorUnits[m.currency])
+}
+
+// jsonForm is the wire shape for Money: full, unrounded precision as a
+// string (never a JSON number — a float-typed JSON number would defeat
+// the entire point of this package) plus the ISO 4217 currency code. A
+// consumer that wants a display-rounded figure calls StringFixed itself;
+// marshaling doesn't round on its own, for the same "don't round until
+// the documented final point" reason Decimal() doesn't (brief §6).
+type jsonForm struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+func (m Money) MarshalJSON() ([]byte, error) {
+	return json.Marshal(jsonForm{Amount: m.amount.String(), Currency: m.currency})
+}
+
+func (m *Money) UnmarshalJSON(data []byte) error {
+	var f jsonForm
+	if err := json.Unmarshal(data, &f); err != nil {
+		return err
+	}
+	parsed, err := Parse(f.Amount, f.Currency)
+	if err != nil {
+		return err
+	}
+	*m = parsed
+	return nil
 }

@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"time"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -43,6 +45,17 @@ func NewPool(ctx context.Context, cfg Config) (*Pool, error) {
 	poolCfg.MaxConnLifetime = time.Hour
 	poolCfg.MaxConnIdleTime = 30 * time.Minute
 	poolCfg.HealthCheckPeriod = time.Minute
+
+	// Registers NUMERIC <-> shopspring/decimal.Decimal scan/encode support
+	// on every pooled connection, so repository code can Scan a NUMERIC
+	// column directly into a decimal.Decimal (and, wrapped by
+	// internal/platform/money, into a Money value) without a manual
+	// text-cast round trip. Money is the only package permitted to
+	// construct a Money from the resulting decimal (brief §6/§56).
+	poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		pgxdecimal.Register(conn.TypeMap())
+		return nil
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
