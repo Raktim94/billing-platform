@@ -25,6 +25,9 @@ import (
 	contactsapp "billing-platform/internal/modules/contacts/app"
 	contactshttp "billing-platform/internal/modules/contacts/httpapi"
 	contactspg "billing-platform/internal/modules/contacts/pg"
+	gstindiaapp "billing-platform/internal/modules/gstindia/app"
+	gstindiahttp "billing-platform/internal/modules/gstindia/httpapi"
+	gstindiapg "billing-platform/internal/modules/gstindia/pg"
 	identityapp "billing-platform/internal/modules/identity/app"
 	identityhttp "billing-platform/internal/modules/identity/httpapi"
 	identitypg "billing-platform/internal/modules/identity/pg"
@@ -188,6 +191,20 @@ func run() error {
 		auditRecorder,
 	)
 
+	// gstRateRepo/gstindia.NewEngine/taxationapp.NewService are the pieces
+	// Stage 5b (the sales module, once it exists) wires together to
+	// actually calculate and persist tax on a real invoice — see
+	// internal/modules/gstindia.Engine and internal/modules/taxation/app.
+	// taxation has no HTTP surface of its own (it's a cross-module
+	// library, not an end-user-facing API — docs/architecture.md §5), so
+	// it isn't constructed here yet; only gstindia's admin
+	// rate-configuration API is mounted below. This composition root
+	// deliberately doesn't hold an unused Service instance just to prove
+	// it compiles — Stage 5b adds the taxationapp/taxationpg imports back
+	// when it has an actual caller for taxationapp.Service.
+	gstRateRepo := gstindiapg.NewTaxRateRepo(pool)
+	gstindiaSvc := gstindiaapp.NewService(pool, gstRateRepo, permissionsChecker, auditRecorder)
+
 	identitySvc := identityapp.NewService(
 		pool,
 		identitypg.NewUserRepo(pool),
@@ -227,6 +244,7 @@ func run() error {
 			pricinghttp.NewHandlers(pricingSvc).Mount(r)
 			inventoryhttp.NewHandlers(inventorySvc).Mount(r)
 			purchaseshttp.NewHandlers(purchasesSvc).Mount(r)
+			gstindiahttp.NewHandlers(gstindiaSvc).Mount(r)
 		})
 	})
 

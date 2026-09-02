@@ -1,0 +1,190 @@
+// Package app is the taxation module's application layer: it orchestrates
+// a TaxEngine calculation and persists the result as an immutable snapshot
+// (docs/architecture.md §5). It has no permission checks of its own — like
+// internal/modules/inventory's RecordMovementForOtherModule, this is a
+// cross-module entry point meant to be called from another module's
+// already-permission-checked application-layer method (Stage 5b's sales
+// module, once it exists), not directly from an HTTP handler.
+package app
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+
+	"billing-platform/internal/modules/taxation/domain"
+	"billing-platform/internal/platform/database"
+)
+
+type Service struct {
+	pool       database.Runner
+	engine     domain.TaxEngine
+	documents  domain.TaxDocumentRepository
+	lines      domain.TaxLineRepository
+	components domain.TaxComponentRepository
+}
+
+func NewService(
+	pool database.Runner,
+	engine domain.TaxEngine,
+	documents domain.TaxDocumentRepository,
+	lines domain.TaxLineRepository,
+	components domain.TaxComponentRepository,
+) *Service {
+	return &Service{pool: pool, engine: engine, documents: documents, lines: lines, components: components}
+}
+
+// SnapshotRequest is CalculateAndSnapshot's input: a calculation input plus
+// what business document it belongs to (Stage 5b's sales module supplies
+// referenceType="SALES_INVOICE" etc.; this module's own tests use a
+// standalone reference since no such document exists yet in Stage 5a).
+type SnapshotRequest struct {
+	ReferenceType string
+	ReferenceID   *uuid.UUID
+	Input         domain.TaxCalculationInput
+}
+
+// CalculateAndSnapshot runs the configured TaxEngine and persists the
+// result as a tax_documents/tax_lines/tax_components snapshot in one
+// transaction — this is the ONE place a tax calculation is resolved and
+// stored (brief §7, §55: a finalized document's tax must never be
+// recalculated later against an updated tax_rate_master). Callers must
+// already be inside a RunScoped transaction scoped to in.OrganisationID
+// for their own document's state change (e.g. Stage 5b's sales-invoice
+// finalize) — this method opens its OWN RunScoped block, so call it
+// either before or after that document's own transaction commits, not
+// nested inside it, to avoid a needless cross-transaction dependency;
+// Stage 5b should re-evaluate this once a real caller exists and prefers
+// true single-transaction atomicity with the sales invoice write.
+func (s *Service) CalculateAndSnapshot(ctx context.Context, req SnapshotRequest) (*domain.TaxDocument, []*domain.TaxLine, []*domain.TaxComponentRow, error) {
+	if len(req.Input.Lines) == 0 {
+		return nil, nil, nil, domain.ErrNoLines
+	}
+	// A caller that forgets to set SupplyType gets a sensible default
+	// (B2C — the most common case) rather than a cryptic
+	// tax_documents_supply_type_check constraint violation from Postgres;
+	// caught by TestTaxation_FinalizedSnapshot_UnaffectedByLaterRateMasterUpdate
+	// during development, whose test helper didn't set it.
+	if req.Input.SupplyType == "" {
+		req.Input.SupplyType = domain.SupplyB2C
+	}
+
+	var doc *domain.TaxDocument
+	var persistedLines []*domain.TaxLine
+	var persistedComponents []*domain.TaxComponentRow
+
+	// The whole thing — calculation AND persistence — runs inside ONE
+	// RunScoped block. The engine's rate lookup (tax_rate_master) is an
+	// RLS-protected tenant table exactly like everything else since
+	// migration 0001: calling s.engine.Calculate OUTSIDE a scoped
+	// transaction would run it against an unscoped connection, which
+	// fails closed (sees zero rows) and surfaces as a spurious "no tax
+	// rate configured" error — this exact bug was caught by
+	// TestTaxation_CalculateAndSnapshot_PersistsAndIsRetrievable during
+	// development, the same class of ordering mistake Stage 2's
+	// permissions.Checker hit and fixed by self-scoping.
+	err := s.pool.RunScoped(ctx, req.Input.OrganisationID, func(ctx context.Context) error {
+		result, err := s.engine.Calculate(ctx, req.Input)
+		if err != nil {
+			return fmt.Errorf("calculating: %w", err)
+		}
+
+		docID, err := uuid.NewV7()
+		if err != nil {
+			return fmt.Errorf("generating tax_document id: %w", err)
+		}
+		now := time.Now()
+		doc = &domain.TaxDocument{
+			ID:                 docID,
+			OrganisationID:     req.Input.OrganisationID,
+			ReferenceType:      req.ReferenceType,
+			ReferenceID:        req.ReferenceID,
+			DocumentDate:       req.Input.DocumentDate,
+			CurrencyCode:       req.Input.CurrencyCode,
+			SupplierStateCode:  req.Input.SupplierStateCode,
+			PlaceOfSupplyCode:  req.Input.SupplyPlace.StateCode,
+			SupplyType:         req.Input.SupplyType,
+			ReverseCharge:      req.Input.ReverseCharge,
+			TotalTaxableAmount: result.TotalTaxableAmount,
+			TotalTaxAmount:     result.TotalTaxAmount,
+			GrandTotal:         result.GrandTotal,
+			CreatedAt:          now,
+		}
+
+		if err := s.documents.Create(ctx, doc); err != nil {
+			return fmt.Errorf("creating tax_document: %w", err)
+		}
+		for _, lr := range result.Lines {
+			lineID, err := uuid.NewV7()
+			if err != nil {
+				return fmt.Errorf("generating tax_line id: %w", err)
+			}
+			line := &domain.TaxLine{
+				ID:              lineID,
+				OrganisationID:  req.Input.OrganisationID,
+				TaxDocumentID:   docID,
+				LineRef:         lr.LineRef,
+				HSNSACCode:      lr.HSNSACCode,
+				PricingMode:     lr.PricingMode,
+				GrossAmount:     lr.GrossAmount,
+				TaxableAmount:   lr.TaxableAmount,
+				TotalTaxAmount:  lr.TotalTax,
+				Classification:  lr.Classification,
+				TaxRateMasterID: lr.RateMasterID,
+				CreatedAt:       now,
+			}
+			if err := s.lines.Create(ctx, line); err != nil {
+				return fmt.Errorf("creating tax_line: %w", err)
+			}
+			persistedLines = append(persistedLines, line)
+
+			for _, c := range lr.Components {
+				compID, err := uuid.NewV7()
+				if err != nil {
+					return fmt.Errorf("generating tax_component id: %w", err)
+				}
+				row := &domain.TaxComponentRow{
+					ID:             compID,
+					OrganisationID: req.Input.OrganisationID,
+					TaxLineID:      lineID,
+					ComponentType:  c.Type,
+					Rate:           c.Rate,
+					Amount:         c.Amount,
+					CreatedAt:      now,
+				}
+				if err := s.components.Create(ctx, row); err != nil {
+					return fmt.Errorf("creating tax_component: %w", err)
+				}
+				persistedComponents = append(persistedComponents, row)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return doc, persistedLines, persistedComponents, nil
+}
+
+// GetByReference re-fetches a previously persisted tax_document snapshot —
+// used to prove a document's tax never changes after the fact even if
+// tax_rate_master is later updated (brief §7).
+func (s *Service) GetByReference(ctx context.Context, orgID uuid.UUID, referenceType string, referenceID uuid.UUID) (*domain.TaxDocument, []*domain.TaxLine, error) {
+	var doc *domain.TaxDocument
+	var lines []*domain.TaxLine
+	err := s.pool.RunScoped(ctx, orgID, func(ctx context.Context) error {
+		var err error
+		doc, err = s.documents.GetByReference(ctx, orgID, referenceType, referenceID)
+		if err != nil {
+			return err
+		}
+		lines, err = s.lines.ListByDocument(ctx, orgID, doc.ID)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return doc, lines, nil
+}
