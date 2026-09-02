@@ -55,28 +55,30 @@ mention `nest build` diverging from `tsc --noEmit` — irrelevant to Go, but a
 reminder to independently verify this new stack's build rather than trust
 typecheck-passes-therefore-it-builds.
 
-## Open questions requiring your decision before/around Stage 2
+## Decided (previously open, resolved by explicit instruction, 2026-09-02)
 
-1. **Working name.** Repo scaffolded as `billing-platform` — a placeholder,
-   not a product name, chosen specifically to avoid any trademark collision
-   while we build. Rename whenever you have a real name; nothing in the
-   architecture depends on it.
-2. **e-Invoice/e-Way Bill provider.** Do you already hold GSP/ASP credentials
-   (or direct NIC IRP API access), or should Stage 8 target the public NIC
-   sandbox generically behind `EInvoiceProvider`, with your real provider
-   wired in later purely as a new adapter (no domain code changes required,
-   by design)?
-3. **First deployment target.** CasaOS on debiancasa (consistent with
-   KinetiRx/RustFS/Zulivio) or a fresh VPS? Doesn't change the architecture,
-   only what Stage 10 gets tested against first.
-4. **Country scope for v1.** Assuming India-only for v1 (the generic
-   `tax_document/tax_line/tax_component` model supports more later without a
-   schema change). Confirm, or tell me if a second country pack is in scope
-   for v1.
-5. **MFA enforcement timing.** Recommend TOTP mandatory-enforced for
-   owners/admins/accountants starting Stage 2 (not deferred) — retrofitting
-   auth after other modules depend on the session/permission model is
-   materially more expensive than building it in from the start. Confirm.
+The user has directed autonomous progress with no further clarifying
+questions ("keep choosing best option don't ask me"). These are no longer
+open — they're settled, recorded here for traceability:
+
+- **License:** AGPL-3.0, matching `nodedr-pos` (same copyright holders:
+  Nodedr Infotech Private Limited and Raktim Ranjit). See `LICENSE` and
+  `README.md`.
+- **Distribution model:** public GitHub repo, downloadable and self-hostable
+  like `nodedr-pos` — Docker/CasaOS-friendly, **no external connection
+  required** for core operation (see `docs/architecture.md`'s license
+  section for exactly which modules are the sole, opt-in exceptions).
+- **Working name:** stays `billing-platform` — repo is public now, no
+  rename planned unless the user names it later.
+- **e-Invoice/e-Way Bill provider:** build against the NIC sandbox
+  (`einv-apisandbox.nic.in`) behind `EInvoiceProvider`; a real GSP/ASP
+  account is a drop-in adapter swap later, by design.
+- **First deployment target:** assume CasaOS on debiancasa, consistent with
+  the user's other self-hosted projects, until told otherwise.
+- **Country scope for v1:** India-only; the generic tax model supports more
+  without a schema change, but no second country ships in v1.
+- **MFA enforcement timing:** TOTP mandatory-enforced for owners/admins/
+  accountants from Stage 2 onward (already built — see `docs/TODO.md`).
 
 ## Explicitly deferred (not unresolved — decided, just not v1)
 

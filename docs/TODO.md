@@ -27,15 +27,15 @@ part of finishing a stage, not after the fact.
 - [x] Unit tests (46/46) + Testcontainers integration tests incl. RLS cross-tenant isolation (6/6), independently re-verified
 - [x] `docs/adr/0001-argon2id-parameters.md`
 
-## Stage 3 — Catalogue / Contacts / Pricing
-- [ ] `internal/modules/catalogue`: products, product_variants, SKUs, barcodes, categories, brands
-- [ ] Units of measure + explicit unit_conversions (BOX→PCS, etc.), auditable
-- [ ] `internal/modules/contacts`: parties (customer/supplier/both), addresses (billing/shipping/warehouse/registered), tax registrations, credit limit, payment terms
-- [ ] `internal/modules/pricing`: price lists, price list items, multi-currency price fields (uses `internal/platform/money`)
-- [ ] GST fields on catalogue (HSN/SAC) and contacts (GSTIN, state code) — data only, no tax calculation logic yet (that's Stage 5/`gstindia`)
-- [ ] Global search groundwork: trigram/full-text indexes on product/party name, SKU, barcode, phone, GSTIN
-- [ ] Import/export scaffolding for products/customers/suppliers (CSV/XLSX, dry-run + validation report, brief §53) — at least for catalogue+contacts
-- [ ] Unit + integration tests, RLS coverage on all new tenant tables
+## Stage 3 — Catalogue / Contacts / Pricing ✅ mostly (2026-09-02, one carry-over)
+- [x] `internal/modules/catalogue`: products, product_variants, SKUs, barcodes, categories, brands
+- [x] Units of measure + explicit unit_conversions (BOX→PCS, etc.), auditable
+- [x] `internal/modules/contacts`: parties (customer/supplier/both), addresses (billing/shipping/warehouse/registered), tax registrations, credit limit, payment terms
+- [x] `internal/modules/pricing`: price lists, price list items, multi-currency price fields (uses `internal/platform/money`)
+- [x] GST fields on catalogue (HSN/SAC) and contacts (GSTIN, state code) — data only, no tax calculation logic yet (that's Stage 5/`gstindia`)
+- [x] Global search groundwork: trigram indexes on product name/SKU (contacts trigram search: verify alongside the carry-over item below)
+- [ ] **Carried to Stage 4:** import/export scaffolding for products/customers/suppliers (CSV/XLSX, dry-run + validation report, brief §53) — not built in the Stage 3 pass, genuinely missing, not deferred by decision
+- [x] Unit tests (63/63) + integration tests (15/15 incl. per-module RLS cross-org checks), independently re-verified
 
 ## Stage 4 — Inventory
 - [ ] `internal/modules/inventory`: warehouses (already exist from Stage 2) + stock_movements (append-only), stock_balances (materialized, transactional)

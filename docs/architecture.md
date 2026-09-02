@@ -10,6 +10,22 @@ one (e.g. accounting constrains inventory costing), that's called out.
 
 Companion doc: `docs/research.md` (verified version facts, open questions).
 
+**License and distribution (decided 2026-09-02):** AGPL-3.0, matching this
+project's sibling self-hosted product, `nodedr-pos`. Distribution model is
+the same too — publicly downloadable, self-hosted via Docker/CasaOS, and
+**no external network connection required for core operation** (own
+Postgres, no mandatory cloud dependency, no telemetry). This is a real
+constraint on every module, not just a README claim: nothing in `sales`,
+`inventory`, `accounting`, `catalogue`, `contacts`, `pricing`, or `identity`
+may require internet reachability to function. Only the modules that are
+inherently external by nature — `einvoice`/`ewaybill` (a government API,
+legally required for those specific documents when enabled),
+`notifications` (WhatsApp/email), and an optional cloud storage backend —
+ever make an outbound call, and only when the deployment operator
+explicitly configures/enables them. §12 (Docker/CasaOS) already assumed
+self-hosted-friendly packaging; this makes "offline-capable core" an
+explicit, checked requirement rather than an implicit assumption.
+
 ---
 
 ## 1. Assumptions and unresolved questions
