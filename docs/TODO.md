@@ -83,13 +83,17 @@ part of finishing a stage, not after the fact.
 - [x] Shared filter-building helper (`internal/modules/reporting/pg`'s `whereBuilder`) + a validated `GroupDimension` allow-list for GROUP BY (never raw-string SQL, brief §62)
 - [x] Unit tests (10 new) + integration tests (11 new, incl. a report-specific cross-organisation RLS-leak test across 5 report types and a dashboard performance sanity check) — independently re-verified, one real bug caught and fixed (ambiguous `organisation_id` column reference on every multi-table-join report query — ~10 query sites)
 
-## Stage 8 — Government Integrations (sandbox only)
-- [ ] `internal/modules/einvoice`: `EInvoiceProvider` interface, `v1` adapter against NIC sandbox (einv-apisandbox.nic.in), persist IRN/ack/signed QR/status per `docs/architecture.md` §9
-- [ ] `internal/modules/ewaybill`: generate/retrieve/cancel/Part-A/Part-B/vehicle+transporter update/validity extension, **Ship-to GSTIN + voluntary closure fields** (2026-08-01 GSTN change, `docs/research.md`)
-- [ ] Explicit status machine (DRAFT→QUEUED→SUBMITTING→GENERATED|FAILED_RETRYABLE|FAILED_FINAL, CANCEL_PENDING→CANCELLED, CLOSED), outbox-driven, idempotent
-- [ ] Never call from sales domain code directly — adapter boundary enforced (`docs/architecture.md` §2)
-- [ ] Fixture tests against official/sandbox schema; **no production credentials in CI** (brief Rule 17)
-- [ ] Scenarios J/K passing against sandbox
+## Stage 8 — Government Integrations (sandbox only) ✅ (2026-09-03, follow-ups noted)
+- [x] `internal/platform/outbox`: generic transactional outbox (`outbox_events`, a SECURITY DEFINER `outbox_claim_next()` for the one deliberate cross-org RLS bypass a background poller needs — same pattern as migrations/0003's login lookup), `Poller` with exponential backoff — this did not exist before Stage 8 and is built reusable for Stage 9, not e-Invoice-specific
+- [x] `apps/worker`: real, separate composition-root process running the outbox poller — never inline with the HTTP request path
+- [x] `internal/modules/einvoice`: `EInvoiceProvider` interface (exact signature from `docs/architecture.md` §9), `v1/mock` (canned, deterministic, zero network calls — the only provider automated tests ever exercise) and `v1/sandbox` (real NIC-sandbox-calling adapter, wired into `apps/worker` behind `EINVOICE_PROVIDER=sandbox`, reviewed-by-reading not proven-by-testing — brief Rule 17), persists IRN/ack/signed QR/status/correlation id per §9's field list
+- [x] `internal/modules/ewaybill`: generate/retrieve/cancel/Part-B history/voluntary closure — **Ship-to GSTIN (URP sentinel) + CLOSED status distinct from CANCELLED** (2026-08-01 GSTN change, `docs/research.md`) present from the first migration, round-trip tested
+- [x] Explicit persisted status machine (DRAFT→QUEUED→SUBMITTING→GENERATED|FAILED_RETRYABLE|FAILED_FINAL, CANCEL_PENDING→CANCELLED, CLOSED) — real CHECK-constrained columns, not inferred
+- [x] Never called from sales domain code directly — `sales.FinalizeDocument` only enqueues an outbox event (one INSERT, same transaction as finalize); the government API call happens later, in `apps/worker`, never inline with the HTTP request (`docs/architecture.md` §9, brief Rule 12, Scenario L)
+- [x] Idempotent: `einvoice_records.sales_document_id` UNIQUE constraint + an in-service Terminal-status check backs it up — a reprocessed outbox event is a safe no-op, tested explicitly (double-processing calls the provider exactly once)
+- [x] Unit tests (6 new) + integration tests (6 new: full flow, failed-then-retry, idempotency, outage-doesn't-corrupt-sale, RLS, Ship-to-GSTIN/closure round-trip) — independently re-verified, 200/200 total (was 188), zero real network calls to any government host confirmed by grep across the whole test suite
+- [x] Fixture/schema round-trip tests against the mock adapter's canned shapes (IRN, ack, QR, GSTIN, EWB number/validity/Part-B); **no production or sandbox credentials used in the automated test suite** (brief Rule 17) — Scenario J/K's spirit satisfied via the mock adapter per the brief's own "use sandbox/mock adapters" instruction, not by calling the real NIC sandbox
+- [ ] **Follow-ups, not done**: `einvoice_provider_credentials` (encrypted-at-rest table) exists but `apps/worker` currently sources sandbox credentials from env vars, not yet reading+decrypting per-legal-entity from that table; only `TAX_INVOICE` auto-enqueues e-Invoice generation (CREDIT_NOTE/DEBIT_NOTE e-invoicing is a real requirement, deferred); `purchases` documents aren't wired through this (only `sales`); e-Way Bill generation is a manually-triggered API call, not auto-enqueued from finalize (deliberate — no goods-movement-threshold business rule exists yet to decide *when* one is legally required, brief Rule 2)
 
 ## Stage 9 — Integrations
 - [ ] `internal/modules/notifications`: EmailProvider, SMSProvider, WhatsAppProvider interfaces; signed, expiring, revocable share links

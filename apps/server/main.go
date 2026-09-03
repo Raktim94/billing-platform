@@ -63,6 +63,7 @@ import (
 	"billing-platform/internal/platform/logging"
 	"billing-platform/internal/platform/numbering"
 	"billing-platform/internal/platform/observability"
+	"billing-platform/internal/platform/outbox"
 	"billing-platform/internal/platform/permissions"
 	"billing-platform/migrations"
 )
@@ -237,6 +238,7 @@ func run() error {
 	)
 
 	numberingSvc := numbering.NewService(pool, numbering.NewPGRepository(pool))
+	outboxStore := outbox.NewPGStore(pool)
 
 	salesSvc := salesapp.NewService(
 		pool,
@@ -250,6 +252,7 @@ func run() error {
 		pricingSvc,
 		numberingSvc,
 		accountingSvc,
+		outboxStore,
 		permissionsChecker,
 		auditRecorder,
 	)

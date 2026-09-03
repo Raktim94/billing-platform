@@ -30,6 +30,7 @@ import (
 	"billing-platform/internal/platform/database"
 	"billing-platform/internal/platform/money"
 	"billing-platform/internal/platform/numbering"
+	"billing-platform/internal/platform/outbox"
 	"billing-platform/internal/platform/permissions"
 )
 
@@ -53,7 +54,14 @@ type Service struct {
 	// panicking, so existing sales tests that predate Stage 6 keep working
 	// unchanged. Any caller that wants Scenario E's ledger behavior must
 	// pass a real *accountingapp.Service.
-	accounting  *accountingapp.Service
+	accounting *accountingapp.Service
+	// outbox is optional (nil in pre-Stage-8 callers/tests) — same
+	// nil-checked pattern as accounting. A nil outbox means
+	// FinalizeDocument simply doesn't queue an e-Invoice generation
+	// request; everything else about finalize is unaffected (Stage 8's
+	// government-integration is additive, not a hard dependency of
+	// finalizing a sale).
+	outbox      outbox.Writer
 	permissions *permissions.Checker
 	audit       audit.Recorder
 	now         func() time.Time
@@ -71,12 +79,13 @@ func NewService(
 	pricingSvc *pricingapp.Service,
 	numberingSvc *numbering.Service,
 	accountingSvc *accountingapp.Service,
+	outboxWriter outbox.Writer,
 	checker *permissions.Checker,
 	recorder audit.Recorder,
 ) *Service {
 	return &Service{pool: pool, documents: documents, lines: lines, inventory: inventorySvc, taxation: taxationSvc,
 		catalogue: catalogueSvc, contacts: contactsSvc, organisation: organisationSvc, pricing: pricingSvc, numbering: numberingSvc,
-		accounting: accountingSvc, permissions: checker, audit: recorder, now: time.Now}
+		accounting: accountingSvc, outbox: outboxWriter, permissions: checker, audit: recorder, now: time.Now}
 }
 
 // Permission codes are the ones migrations/0002_rbac_catalog.up.sql
@@ -235,6 +244,24 @@ func (s *Service) GetDocument(ctx context.Context, principal permissions.Princip
 		lines, err = s.lines.ListByDocument(ctx, id)
 		return err
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return doc, lines, nil
+}
+
+// GetDocumentForOtherModule is a cross-module read (Stage 8) — same
+// pattern and rationale as organisation.GetLegalEntityForOtherModule: no
+// permission check (the caller's own already-checked path authorizes
+// this), and does NOT open its own transaction — the only caller
+// (einvoice.Service, invoked from apps/worker's outbox poller) is already
+// inside a RunScoped(ctx, orgID, ...) block when it calls this.
+func (s *Service) GetDocumentForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.Document, []*domain.DocumentLine, error) {
+	doc, err := s.documents.GetByID(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	lines, err := s.lines.ListByDocument(ctx, id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -466,6 +493,22 @@ func (s *Service) FinalizeDocument(ctx context.Context, principal permissions.Pr
 		doc.TaxDocumentID = &taxDoc.ID
 		grandTotal := taxDoc.GrandTotal
 		doc.GrandTotalAmount = &grandTotal
+
+		// Queue e-Invoice generation (Stage 8) atomically with
+		// finalization itself — one more INSERT inside this same
+		// transaction (docs/architecture.md §9/§34), never a second,
+		// separate government-API call inline here. TAX_INVOICE only for
+		// now (the document type e-invoicing actually applies to);
+		// CREDIT_NOTE/DEBIT_NOTE e-invoicing is a real brief §9 scenario
+		// but is left as a follow-up rather than guessed at under this
+		// stage's time budget — see the Stage 8 report.
+		if s.outbox != nil && doc.DocumentType == domain.DocTaxInvoice {
+			if err := s.outbox.Enqueue(ctx, principal.OrganisationID, "einvoice.generate",
+				"einvoice:generate:"+doc.ID.String(),
+				map[string]any{"sales_document_id": doc.ID}); err != nil {
+				return fmt.Errorf("queuing e-invoice generation: %w", err)
+			}
+		}
 
 		return s.audit.Record(ctx, audit.Entry{
 			OrganisationID: principal.OrganisationID, ActorUserID: &principal.UserID, ActorType: audit.ActorUser,

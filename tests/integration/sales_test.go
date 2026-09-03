@@ -95,7 +95,7 @@ func newTestSalesServices(t *testing.T) (*salesapp.Service, *inventoryapp.Servic
 		sharedPool,
 		salespg.NewDocumentRepo(sharedPool),
 		salespg.NewDocumentLineRepo(sharedPool),
-		inventorySvc, taxationSvc, catalogueSvc, contactsSvc, orgSvc, pricingSvc, numberingSvc, nil,
+		inventorySvc, taxationSvc, catalogueSvc, contactsSvc, orgSvc, pricingSvc, numberingSvc, nil, nil,
 		checker, recorder,
 	)
 	return salesSvc, inventorySvc, catalogueSvc, gstindiaSvc

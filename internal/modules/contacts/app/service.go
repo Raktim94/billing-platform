@@ -256,6 +256,16 @@ func (s *Service) ListTaxRegistrations(ctx context.Context, principal permission
 	return result, err
 }
 
+// GetTaxRegistrationForOtherModule is a cross-module read (Stage 8) — same
+// pattern and rationale as organisation.GetLegalEntityForOtherModule: no
+// permission check of its own (the caller's own already-checked path is
+// what authorizes this), and does NOT open its own transaction — callers
+// (einvoice.Service, invoked from apps/worker's outbox poller) must
+// already be inside a RunScoped block.
+func (s *Service) GetTaxRegistrationForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.TaxRegistration, error) {
+	return s.taxRegistrations.GetByID(ctx, id)
+}
+
 // LookupByRegistrationNumber is the GSTIN search path (brief §24).
 func (s *Service) LookupByRegistrationNumber(ctx context.Context, principal permissions.Principal, registrationNumber string) (*domain.TaxRegistration, error) {
 	if err := s.view(ctx, principal); err != nil {

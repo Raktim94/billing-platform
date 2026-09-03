@@ -195,6 +195,21 @@ func (r *TaxRegistrationRepo) ListByParty(ctx context.Context, partyID uuid.UUID
 	return out, rows.Err()
 }
 
+func (r *TaxRegistrationRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.TaxRegistration, error) {
+	const q = `
+		SELECT id, organisation_id, party_id, country_code, registration_number, COALESCE(state_code,''), is_primary, created_at
+		FROM party_tax_registrations WHERE id = $1`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+	var t domain.TaxRegistration
+	if err := row.Scan(&t.ID, &t.OrganisationID, &t.PartyID, &t.CountryCode, &t.RegistrationNumber, &t.StateCode, &t.IsPrimary, &t.CreatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("contacts: querying party_tax_registration by id: %w", err)
+	}
+	return &t, nil
+}
+
 func (r *TaxRegistrationRepo) GetByRegistrationNumber(ctx context.Context, orgID uuid.UUID, registrationNumber string) (*domain.TaxRegistration, error) {
 	const q = `
 		SELECT id, organisation_id, party_id, country_code, registration_number, COALESCE(state_code,''), is_primary, created_at

@@ -77,7 +77,7 @@ func newTestAccountingServices(t *testing.T) (*salesapp.Service, *purchasesapp.S
 
 	salesSvc := salesapp.NewService(
 		sharedPool, salespg.NewDocumentRepo(sharedPool), salespg.NewDocumentLineRepo(sharedPool),
-		inventorySvc, taxationSvc, catalogueSvc, contactsSvc, orgSvc, pricingSvc, numberingSvc, accountingSvc,
+		inventorySvc, taxationSvc, catalogueSvc, contactsSvc, orgSvc, pricingSvc, numberingSvc, accountingSvc, nil,
 		checker, recorder,
 	)
 	purchasesSvc := purchasesapp.NewService(

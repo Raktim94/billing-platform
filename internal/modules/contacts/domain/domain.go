@@ -125,4 +125,9 @@ type TaxRegistrationRepository interface {
 	ListByParty(ctx context.Context, partyID uuid.UUID) ([]*TaxRegistration, error)
 	// GetByRegistrationNumber is the exact-match GSTIN lookup (brief §24).
 	GetByRegistrationNumber(ctx context.Context, orgID uuid.UUID, registrationNumber string) (*TaxRegistration, error)
+	// GetByID is the additive extension Stage 8 needs: a sales document
+	// stores customer_tax_registration_id (Stage 5b), and building an
+	// e-Invoice IRN request needs to resolve that specific registration's
+	// GSTIN, not search/list by party.
+	GetByID(ctx context.Context, id uuid.UUID) (*TaxRegistration, error)
 }
