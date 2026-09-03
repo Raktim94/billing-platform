@@ -1692,6 +1692,189 @@ paths:
       parameters: [{ $ref: "#/components/parameters/ReportFilterFrom" }, { $ref: "#/components/parameters/ReportFilterTo" }, { $ref: "#/components/parameters/ReportFormat" }]
       responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
 
+  # ============================================================
+  # E-WAY BILL — free-first portal workflow (docs/architecture.md §9b,
+  # Stage 8c). Mounted partly under /sales/documents/{id}/ewaybill/*
+  # (document-scoped) and partly under /ewaybill (not document-scoped).
+  # Verified against internal/modules/ewaybill/{domain,app,eligibility}.
+  # ============================================================
+  /sales/documents/{id}/ewaybill:
+    get:
+      tags: [EWayBill]
+      summary: Evaluate (and persist) e-Way Bill eligibility/status for a finalized sales document.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  eligibility: { $ref: "#/components/schemas/EWayBillEligibility" }
+                  record: { allOf: [{ $ref: "#/components/schemas/EWayBillRecord" }], nullable: true, description: null until a record has been created (e.g. via prepare). }
+
+  /sales/documents/{id}/ewaybill/prepare:
+    post:
+      tags: [EWayBill]
+      summary: Prepare the free-portal upload file from the invoice's immutable snapshot. Downloadable; the frontend also opens the real government portal in a new unproxied tab.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: The prepared file, as an attachment.
+          content: { application/json: { schema: { type: string, format: binary } } }
+        "409":
+          description: NOT_ELIGIBLE.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /sales/documents/{id}/ewaybill/transport-info:
+    post:
+      tags: [EWayBill]
+      summary: Fill in transport details (vehicle/transporter/distance) missing from the snapshot.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vehicle_number: { type: string, nullable: true }
+                transporter_id: { type: string, nullable: true }
+                transporter_name: { type: string, nullable: true }
+                distance_km: { type: string, nullable: true, description: Decimal string — not derivable from sales data, genuinely user-entered. }
+      responses:
+        "200": { description: OK — updated eligibility., content: { application/json: { schema: { $ref: "#/components/schemas/EWayBillEligibility" } } } }
+
+  /sales/documents/{id}/ewaybill/manual-result:
+    post:
+      tags: [EWayBill]
+      summary: Record an e-Way Bill number obtained manually on the government portal (the universal fallback path).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ewb_number, valid_from, valid_until]
+              properties:
+                ewb_number: { type: string }
+                valid_from: { type: string, format: date-time }
+                valid_until: { type: string, format: date-time }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/EWayBillRecord" } } } }
+
+  /sales/documents/{id}/ewaybill/import-result:
+    post:
+      tags: [EWayBill]
+      summary: >
+        Import an e-Way Bill result and verify it against the invoice's own
+        snapshot (number/date/GSTIN/doc type) — a mismatch is rejected and
+        audited, never silently linked. Accepts already-parsed fields only;
+        raw file/PDF upload+parsing is not built (manual entry is the
+        universal fallback today).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ewb_number, valid_from, valid_until, claimed_invoice_number, claimed_invoice_date, claimed_supplier_gstin, claimed_document_type]
+              properties:
+                ewb_number: { type: string }
+                valid_from: { type: string, format: date-time }
+                valid_until: { type: string, format: date-time }
+                claimed_invoice_number: { type: string }
+                claimed_invoice_date: { type: string, format: date-time }
+                claimed_supplier_gstin: { type: string }
+                claimed_document_type: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/EWayBillRecord" } } } }
+        "409":
+          description: RESULT_MISMATCH — the claimed fields don't match this invoice's snapshot.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /ewaybill/portal-url:
+    get:
+      tags: [EWayBill]
+      summary: The official government e-Way Bill portal URL — backend/env-configured, zero parameters, never user-editable.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { url: { type: string } } } } } }
+
+  # ============================================================
+  # LOGISTICS — vehicles, transporters, customer transport preferences
+  # (Stage 8c). Verified against internal/modules/logistics/domain.
+  # ============================================================
+  /logistics/vehicles:
+    get:
+      tags: [Logistics]
+      summary: List vehicles.
+      parameters: [{ name: active_only, in: query, schema: { type: boolean, default: true } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { vehicles: { type: array, items: { $ref: "#/components/schemas/Vehicle" } } } } } } }
+    post:
+      tags: [Logistics]
+      summary: Create a vehicle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [registration_number, vehicle_type, default_transport_mode]
+              properties:
+                registration_number: { type: string }
+                nickname: { type: string }
+                vehicle_type: { type: string }
+                default_transport_mode: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Vehicle" } } } }
+
+  /logistics/vehicles/{id}/deactivate:
+    post:
+      tags: [Logistics]
+      summary: Deactivate a vehicle.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "204": { description: Deactivated, no content. }
+
+  /logistics/transporters:
+    get:
+      tags: [Logistics]
+      summary: List transporters.
+      parameters: [{ name: active_only, in: query, schema: { type: boolean, default: true } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { transporters: { type: array, items: { $ref: "#/components/schemas/Transporter" } } } } } } }
+    post:
+      tags: [Logistics]
+      summary: Create a transporter.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, default_transport_mode]
+              properties:
+                name: { type: string }
+                transporter_id: { type: string }
+                gstin: { type: string }
+                phone: { type: string }
+                address: { type: string }
+                default_transport_mode: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Transporter" } } } }
+
+  /logistics/transporters/{id}/deactivate:
+    post:
+      tags: [Logistics]
+      summary: Deactivate a transporter.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "204": { description: Deactivated, no content. }
+
 components:
   parameters:
     ReportFilterFrom:
@@ -2351,6 +2534,89 @@ components:
         CurrentStockValue: { $ref: "#/components/schemas/Money" }
         LowStockCount: { type: integer }
         OverdueReceivable: { $ref: "#/components/schemas/Money" }
+
+    EWayBillEligibility:
+      type: object
+      properties:
+        Requirement: { type: string, enum: [NOT_REQUIRED, READY, NEEDS_INFORMATION, REQUIRED] }
+        Missing:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              Field: { type: string }
+              Reason: { type: string }
+        RecordID: { type: string, format: uuid }
+
+    EWayBillRecord:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        SalesDocumentID: { type: string, format: uuid }
+        EInvoiceRecordID: { type: string, format: uuid, nullable: true }
+        IRN: { type: string, nullable: true }
+        EWBNumber: { type: string, nullable: true }
+        Status: { type: string, description: "DRAFT/QUEUED/SUBMITTING/GENERATED/FAILED_RETRYABLE/FAILED_FINAL/CANCEL_PENDING/CANCELLED/CLOSED (API mode), or NOT_REQUIRED/NEEDS_INFORMATION/READY/PREPARING/PORTAL_FILE_READY/AWAITING_PORTAL_COMPLETION/EXPIRED (Free-First mode, Stage 8c)." }
+        Mode: { type: string, enum: [FREE_PORTAL, AUTOMATIC_API] }
+        Source: { type: string, enum: [API, MANUAL_PORTAL, IMPORTED_FILE], nullable: true }
+        PreparedFileName: { type: string, nullable: true }
+        PreparedAt: { type: string, format: date-time, nullable: true }
+        ValidFrom: { type: string, format: date-time, nullable: true }
+        ValidUntil: { type: string, format: date-time, nullable: true }
+        ShipToGSTIN: { type: string, nullable: true, description: "The literal \"URP\" is a valid resolved value (unregistered recipient), not an unset-sentinel." }
+        TransporterID: { type: string }
+        TransporterName: { type: string }
+        VehicleNumber: { type: string }
+        DistanceKM: { type: string, nullable: true }
+        PartBHistory:
+          type: array
+          items:
+            type: object
+            properties:
+              at: { type: string, format: date-time }
+              vehicle_number: { type: string }
+              transporter_id: { type: string }
+              transporter_name: { type: string }
+              reason: { type: string }
+        ClosedAt: { type: string, format: date-time, nullable: true }
+        ClosedByRole: { type: string, enum: [SUPPLIER, RECIPIENT, TRANSPORTER, DRIVER], nullable: true }
+        ErrorCode: { type: string, nullable: true }
+        ErrorMessage: { type: string, nullable: true }
+        CorrelationID: { type: string, nullable: true }
+        CancelledAt: { type: string, format: date-time, nullable: true }
+        CancelReason: { type: string, nullable: true }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    Vehicle:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        RegistrationNumber: { type: string }
+        Nickname: { type: string }
+        VehicleType: { type: string }
+        DefaultTransportMode: { type: string }
+        Active: { type: boolean }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    Transporter:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        Name: { type: string }
+        TransporterID: { type: string }
+        GSTIN: { type: string }
+        Phone: { type: string }
+        Address: { type: string }
+        DefaultTransportMode: { type: string }
+        Active: { type: boolean }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
 
     UnmodeledResponse:
       description: >
