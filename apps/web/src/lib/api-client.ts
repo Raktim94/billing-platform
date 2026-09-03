@@ -86,4 +86,14 @@ export const api = {
     request<T>(path, { method: "POST", body: data !== undefined ? JSON.stringify(data) : undefined }),
   put: <T>(path: string, data?: unknown) =>
     request<T>(path, { method: "PUT", body: data !== undefined ? JSON.stringify(data) : undefined }),
+  /** GETs a `{[key]: T[]}`-shaped list endpoint and coalesces the array —
+   * Go's `map[string]any{key: list}` marshals a nil slice as JSON `null`,
+   * not `[]`, whenever a listing is genuinely empty, so every list
+   * screen would otherwise crash on `.length`/`.map` the first time a
+   * fresh organisation has zero rows. Use this instead of a bare `get`
+   * for any endpoint shaped like `{"products": [...]}`. */
+  getListField: async <T>(path: string, key: string): Promise<T[]> => {
+    const res = await request<Record<string, T[] | null>>(path, { method: "GET" });
+    return res[key] ?? [];
+  },
 };

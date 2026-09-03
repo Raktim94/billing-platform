@@ -17,7 +17,7 @@ export function ContactsPage() {
 
   const parties = useQuery({
     queryKey: ["parties", query],
-    queryFn: () => api.get<{ parties: Party[] }>(`/contacts/parties${query ? `?q=${encodeURIComponent(query)}` : ""}`),
+    queryFn: () => api.getListField<Party>(`/contacts/parties${query ? `?q=${encodeURIComponent(query)}` : ""}`, "parties"),
   });
 
   const createParty = useMutation({
@@ -117,7 +117,7 @@ export function ContactsPage() {
           </p>
         ) : parties.isPending ? (
           <div className={layout.skeleton} style={{ height: 200 }} aria-hidden="true" />
-        ) : parties.data.parties.length === 0 ? (
+        ) : parties.data.length === 0 ? (
           <p className={layout.emptyState}>No contacts yet.</p>
         ) : (
           <div className={ui.tableScroll}>
@@ -131,7 +131,7 @@ export function ContactsPage() {
                 </tr>
               </thead>
               <tbody>
-                {parties.data.parties.map((p) => (
+                {parties.data.map((p) => (
                   <tr key={p.ID}>
                     <td>{p.LegalName}</td>
                     <td>{p.PartyType}</td>

@@ -29,12 +29,12 @@ export function CataloguePage() {
 
   const products = useQuery({
     queryKey: ["products", query],
-    queryFn: () => api.get<{ products: Product[] }>(`/catalogue/products${query ? `?q=${encodeURIComponent(query)}` : ""}`),
+    queryFn: () => api.getListField<Product>(`/catalogue/products${query ? `?q=${encodeURIComponent(query)}` : ""}`, "products"),
   });
 
   const units = useQuery({
     queryKey: ["units"],
-    queryFn: () => api.get<{ units: Unit[] }>("/catalogue/units"),
+    queryFn: () => api.getListField<Unit>("/catalogue/units", "units"),
   });
 
   const createUnit = useMutation({
@@ -87,7 +87,7 @@ export function CataloguePage() {
 
       {showForm ? (
         <div className={layout.panel}>
-          {units.data && units.data.units.length === 0 ? (
+          {units.data && units.data.length === 0 ? (
             <div className={ui.formGrid} style={{ marginBottom: 16 }}>
               <div className={ui.field}>
                 <label htmlFor="new-unit-code">First, add a unit of measure — code (e.g. PCS)</label>
@@ -120,7 +120,7 @@ export function CataloguePage() {
               <label htmlFor="product-unit">Unit</label>
               <select id="product-unit" className={ui.select} value={unitId} onChange={(e) => setUnitId(e.target.value)}>
                 <option value="">Select a unit…</option>
-                {units.data?.units.map((u) => (
+                {units.data?.map((u) => (
                   <option key={u.ID} value={u.ID}>
                     {u.Name} ({u.Code})
                   </option>
@@ -164,7 +164,7 @@ export function CataloguePage() {
           </p>
         ) : products.isPending ? (
           <div className={layout.skeleton} style={{ height: 200 }} aria-hidden="true" />
-        ) : products.data.products.length === 0 ? (
+        ) : products.data.length === 0 ? (
           <p className={layout.emptyState}>No products yet — add your first one above.</p>
         ) : (
           <div className={ui.tableScroll}>
@@ -176,7 +176,7 @@ export function CataloguePage() {
                 </tr>
               </thead>
               <tbody>
-                {products.data.products.map((p) => (
+                {products.data.map((p) => (
                   <tr key={p.ID}>
                     <td>{p.Name}</td>
                     <td>{p.HSNSACCode}</td>
