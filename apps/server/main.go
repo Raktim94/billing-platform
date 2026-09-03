@@ -47,6 +47,9 @@ import (
 	purchasesapp "billing-platform/internal/modules/purchases/app"
 	purchaseshttp "billing-platform/internal/modules/purchases/httpapi"
 	purchasespg "billing-platform/internal/modules/purchases/pg"
+	reportingapp "billing-platform/internal/modules/reporting/app"
+	reportinghttp "billing-platform/internal/modules/reporting/httpapi"
+	reportingpg "billing-platform/internal/modules/reporting/pg"
 	salesapp "billing-platform/internal/modules/sales/app"
 	saleshttp "billing-platform/internal/modules/sales/httpapi"
 	salespg "billing-platform/internal/modules/sales/pg"
@@ -206,6 +209,8 @@ func run() error {
 		auditRecorder,
 	)
 
+	reportingSvc := reportingapp.NewService(pool, reportingpg.NewRepo(pool), accountingSvc, permissionsChecker)
+
 	purchasesSvc := purchasesapp.NewService(
 		pool,
 		purchasespg.NewDocumentRepo(pool),
@@ -291,6 +296,7 @@ func run() error {
 			gstindiahttp.NewHandlers(gstindiaSvc).Mount(r)
 			saleshttp.NewHandlers(salesSvc).Mount(r)
 			accountinghttp.NewHandlers(accountingSvc).Mount(r)
+			reportinghttp.NewHandlers(reportingSvc).Mount(r)
 		})
 	})
 

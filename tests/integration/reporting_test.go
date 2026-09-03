@@ -1,0 +1,399 @@
+//go:build integration
+
+package integration
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	accountingapp "billing-platform/internal/modules/accounting/app"
+	accountingdomain "billing-platform/internal/modules/accounting/domain"
+	purchasesapp "billing-platform/internal/modules/purchases/app"
+	purchasesdomain "billing-platform/internal/modules/purchases/domain"
+	reportingapp "billing-platform/internal/modules/reporting/app"
+	reportingdomain "billing-platform/internal/modules/reporting/domain"
+	reportingpg "billing-platform/internal/modules/reporting/pg"
+	"billing-platform/internal/platform/permissions"
+)
+
+func newTestReportingService(t *testing.T, accountingSvc *accountingapp.Service) *reportingapp.Service {
+	t.Helper()
+	checker := permissions.NewChecker(permissions.NewPGStore(sharedPool), sharedPool)
+	return reportingapp.NewService(sharedPool, reportingpg.NewRepo(sharedPool), accountingSvc, checker)
+}
+
+func finalizePurchase(t *testing.T, ctx context.Context, purchasesSvc *purchasesapp.Service, fx accountingFixture, qty, price string) *purchasesdomain.Document {
+	t.Helper()
+	doc, err := purchasesSvc.CreateDocument(ctx, fx.Principal, purchasesapp.CreateDocumentParams{
+		BranchID: fx.BranchID, WarehouseID: fx.WarehouseID, SupplierPartyID: fx.SupplierID,
+		DocumentType: purchasesdomain.DocGoodsReceipt, CurrencyCode: "INR",
+	})
+	if err != nil {
+		t.Fatalf("purchases CreateDocument: %v", err)
+	}
+	if _, err := purchasesSvc.AddLine(ctx, fx.Principal, purchasesapp.AddLineParams{
+		DocumentID: doc.ID, ProductVariantID: fx.VariantID, UnitID: fx.PCS,
+		Quantity: mustDecimal(t, qty), UnitPrice: mustDecimal(t, price),
+	}); err != nil {
+		t.Fatalf("purchases AddLine: %v", err)
+	}
+	finalized, err := purchasesSvc.FinalizeDocument(ctx, fx.Principal, doc.ID)
+	if err != nil {
+		t.Fatalf("purchases FinalizeDocument: %v", err)
+	}
+	return finalized
+}
+
+// TestReporting_SalesSummary_GroupedByCustomer_MatchesHandComputed seeds
+// two finalized tax invoices for the same customer (10 PCS @ 100 and 5 PCS
+// @ 100, both exclusive, 18% intra-state — same fixture math as
+// sales_test.go's own finalize test) and checks the summary report's
+// totals against hand-computed expectations, not just "the query ran."
+func TestReporting_SalesSummary_GroupedByCustomer_MatchesHandComputed(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, purchasesSvc, accountingSvc, _ := newTestAccountingServices(t)
+	_ = purchasesSvc
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "10", "100") // taxable 1000, grand 1180
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "5", "100")  // taxable 500, grand 590
+
+	rows, err := reportingSvc.SalesSummary(ctx, fx.Principal, reportingdomain.Filter{}, reportingdomain.GroupByCustomer)
+	if err != nil {
+		t.Fatalf("SalesSummary: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d groups, want 1 (one customer)", len(rows))
+	}
+	r := rows[0]
+	if r.DocumentCount != 2 {
+		t.Fatalf("DocumentCount = %d, want 2", r.DocumentCount)
+	}
+	if got := r.GrandTotal.StringFixed(0); got != "1770.00" {
+		t.Fatalf("GrandTotal = %s, want 1770.00 (1180+590)", got)
+	}
+	if got := r.TaxableAmount.StringFixed(0); got != "1500.00" {
+		t.Fatalf("TaxableAmount = %s, want 1500.00 (1000+500)", got)
+	}
+}
+
+func TestReporting_SalesSummary_GroupedByDay_SeparatesDates(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, _, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "1", "100")
+
+	rows, err := reportingSvc.SalesSummary(ctx, fx.Principal, reportingdomain.Filter{}, reportingdomain.GroupByDay)
+	if err != nil {
+		t.Fatalf("SalesSummary: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d day-buckets, want 1", len(rows))
+	}
+	today := time.Now().Format("2006-01-02")
+	if rows[0].Key != today {
+		t.Fatalf("day key = %q, want today (%q)", rows[0].Key, today)
+	}
+}
+
+func TestReporting_SalesSummary_InvalidGroupDimension_Rejected(t *testing.T) {
+	ctx := context.Background()
+	_, _, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	_, err := reportingSvc.SalesSummary(ctx, fx.Principal, reportingdomain.Filter{}, reportingdomain.GroupDimension("'; DROP TABLE sales_documents;--"))
+	if err == nil {
+		t.Fatal("expected an invalid group dimension to be rejected before it ever reaches SQL, got no error")
+	}
+}
+
+func TestReporting_PurchaseSummary_MatchesHandComputed(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, purchasesSvc, accountingSvc, _ := newTestAccountingServices(t)
+	_ = salesSvc
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	finalizePurchase(t, ctx, purchasesSvc, fx, "50", "20") // 1000
+	finalizePurchase(t, ctx, purchasesSvc, fx, "25", "20") // 500
+
+	rows, err := reportingSvc.PurchaseSummary(ctx, fx.Principal, reportingdomain.Filter{}, reportingdomain.GroupBySupplier)
+	if err != nil {
+		t.Fatalf("PurchaseSummary: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d groups, want 1", len(rows))
+	}
+	if got := rows[0].GrandTotal.StringFixed(0); got != "1500.00" {
+		t.Fatalf("GrandTotal = %s, want 1500.00", got)
+	}
+	if rows[0].DocumentCount != 2 {
+		t.Fatalf("DocumentCount = %d, want 2", rows[0].DocumentCount)
+	}
+}
+
+func TestReporting_StockValuation_ReflectsOpeningMinusSale(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, _, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	// setupSalesFixture opens 100 PCS @ cost 50; sell 10.
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "10", "100")
+
+	rows, err := reportingSvc.StockValuation(ctx, fx.Principal, reportingdomain.Filter{WarehouseID: &fx.WarehouseID})
+	if err != nil {
+		t.Fatalf("StockValuation: %v", err)
+	}
+	var found bool
+	for _, r := range rows {
+		if r.ProductVariantID == fx.VariantID {
+			found = true
+			if r.QuantityOnHand != "90" {
+				t.Fatalf("QuantityOnHand = %s, want 90 (100 opening - 10 sold)", r.QuantityOnHand)
+			}
+			if got := r.TotalValue.StringFixed(0); got != "4500.00" {
+				t.Fatalf("TotalValue = %s, want 4500.00 (90 * 50 cost)", got)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("stock valuation report did not include the fixture's product variant")
+	}
+}
+
+func TestReporting_TrialBalance_DebitsEqualCreditsAfterSale(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, _, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "10", "100")
+
+	rows, err := reportingSvc.TrialBalance(ctx, fx.Principal, time.Now().AddDate(0, 0, 1))
+	if err != nil {
+		t.Fatalf("TrialBalance: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("trial balance is empty after a finalized sale")
+	}
+	totalDebit, totalCredit := 0.0, 0.0
+	for _, r := range rows {
+		var d, c float64
+		fmt.Sscanf(r.Debit.StringFixed(0), "%f", &d)
+		fmt.Sscanf(r.Credit.StringFixed(0), "%f", &c)
+		totalDebit += d
+		totalCredit += c
+	}
+	if diff := totalDebit - totalCredit; diff > 0.001 || diff < -0.001 {
+		t.Fatalf("trial balance does not balance: total debit=%.2f total credit=%.2f", totalDebit, totalCredit)
+	}
+}
+
+func TestReporting_ReceivablesSummary_ShowsOutstandingAfterPartialReceipt(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, _, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	// 100 PCS @ 100, exclusive, 18% -> taxable 10000, grand 11800.
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "100", "100")
+	if _, err := accountingSvc.RecordReceipt(ctx, fx.Principal, accountingapp.RecordReceiptParams{
+		PartyID: fx.CustomerID, Amount: mustDecimal(t, "1800"), Method: accountingdomain.MethodCash, ReceivedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("RecordReceipt: %v", err)
+	}
+
+	rows, err := reportingSvc.ReceivablesSummary(ctx, fx.Principal, time.Now().AddDate(0, 0, 1))
+	if err != nil {
+		t.Fatalf("ReceivablesSummary: %v", err)
+	}
+	var found bool
+	for _, r := range rows {
+		if r.PartyID == fx.CustomerID {
+			found = true
+			if got := r.Total.StringFixed(0); got != "10000.00" {
+				t.Fatalf("outstanding total = %s, want 10000.00 (11800 - 1800)", got)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("receivables summary did not include the customer with an outstanding balance")
+	}
+}
+
+func TestReporting_HSNSummary_AggregatesTaxComponents(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, _, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "10", "100") // taxable 1000, CGST 90 + SGST 90 (intra-state 18%)
+
+	rows, err := reportingSvc.HSNSummary(ctx, fx.Principal, reportingdomain.Filter{})
+	if err != nil {
+		t.Fatalf("HSNSummary: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d HSN buckets, want 1", len(rows))
+	}
+	r := rows[0]
+	if r.HSNSACCode != fx.HSN {
+		t.Fatalf("HSNSACCode = %q, want %q", r.HSNSACCode, fx.HSN)
+	}
+	if got := r.CGST.StringFixed(0); got != "90.00" {
+		t.Fatalf("CGST = %s, want 90.00", got)
+	}
+	if got := r.SGST.StringFixed(0); got != "90.00" {
+		t.Fatalf("SGST = %s, want 90.00", got)
+	}
+	if !r.IGST.IsZero() {
+		t.Fatalf("IGST = %s, want 0 (intra-state fixture)", r.IGST.StringFixed(0))
+	}
+}
+
+func TestReporting_Dashboard_ReflectsTodayActivity(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, purchasesSvc, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "10", "100") // grand total 1180
+	finalizePurchase(t, ctx, purchasesSvc, fx, "50", "20")      // 1000
+
+	d, err := reportingSvc.Dashboard(ctx, fx.Principal)
+	if err != nil {
+		t.Fatalf("Dashboard: %v", err)
+	}
+	if got := d.TodaySales.StringFixed(0); got != "1180.00" {
+		t.Fatalf("TodaySales = %s, want 1180.00", got)
+	}
+	if got := d.TodayPurchases.StringFixed(0); got != "1000.00" {
+		t.Fatalf("TodayPurchases = %s, want 1000.00", got)
+	}
+	if got := d.OutstandingReceivable.StringFixed(0); got != "1180.00" {
+		t.Fatalf("OutstandingReceivable = %s, want 1180.00 (nothing received yet)", got)
+	}
+	// Stock value is conserved through a weighted-average receipt: 100
+	// opening @ cost 50 (value 5000), sell 10 (90 @ 50 = value 4500), then
+	// receive 50 more @ cost 20 (value 1000) — weighted-average total value
+	// after a receipt is exactly old_value + received_value regardless of
+	// the blended per-unit rate (4500 + 1000 = 5500), so this is the
+	// correct expected figure, not the pre-purchase 4500.
+	if got := d.CurrentStockValue.StringFixed(0); got != "5500.00" {
+		t.Fatalf("CurrentStockValue = %s, want 5500.00 (4500 post-sale + 1000 from the purchase receipt)", got)
+	}
+}
+
+// TestReporting_RLS_ReportsNeverLeakCrossOrganisationData is the
+// report-specific version of Scenario G (brief §79) — priority #1 per the
+// task brief: a report queried under one organisation's principal, even
+// with the broadest possible (empty) filter, must never surface another
+// organisation's rows. Checked across several report types, not just one,
+// since a missing tenant filter is a per-query mistake, not a
+// module-wide one.
+func TestReporting_RLS_ReportsNeverLeakCrossOrganisationData(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, purchasesSvc, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+
+	fxA := setupAccountingFixture(t, ctx, accountingSvc)
+	finalizeSimpleTaxInvoice(t, ctx, salesSvc, fxA, "10", "100")
+	finalizePurchase(t, ctx, purchasesSvc, fxA, "50", "20")
+
+	fxB := setupAccountingFixture(t, ctx, accountingSvc) // a second, unrelated organisation
+
+	if rows, err := reportingSvc.SalesInvoiceDetail(ctx, fxB.Principal, reportingdomain.Filter{}); err != nil {
+		t.Fatalf("SalesInvoiceDetail as org B: %v", err)
+	} else if len(rows) != 0 {
+		t.Fatalf("RLS FAILED: org B's sales invoice report returned %d of org A's rows", len(rows))
+	}
+
+	if rows, err := reportingSvc.PurchaseDetail(ctx, fxB.Principal, reportingdomain.Filter{}); err != nil {
+		t.Fatalf("PurchaseDetail as org B: %v", err)
+	} else if len(rows) != 0 {
+		t.Fatalf("RLS FAILED: org B's purchase report returned %d of org A's rows", len(rows))
+	}
+
+	if rows, err := reportingSvc.StockValuation(ctx, fxB.Principal, reportingdomain.Filter{}); err != nil {
+		t.Fatalf("StockValuation as org B: %v", err)
+	} else {
+		for _, r := range rows {
+			if r.ProductVariantID == fxA.VariantID {
+				t.Fatal("RLS FAILED: org B's stock valuation report included org A's product variant")
+			}
+		}
+	}
+
+	if rows, err := reportingSvc.TrialBalance(ctx, fxB.Principal, time.Now().AddDate(0, 0, 1)); err != nil {
+		t.Fatalf("TrialBalance as org B: %v", err)
+	} else {
+		for _, r := range rows {
+			if !r.Debit.IsZero() || !r.Credit.IsZero() {
+				t.Fatalf("RLS FAILED: org B's (freshly bootstrapped, no transactions) trial balance shows non-zero activity on %s — likely org A's postings leaking through", r.AccountCode)
+			}
+		}
+	}
+
+	dashB, err := reportingSvc.Dashboard(ctx, fxB.Principal)
+	if err != nil {
+		t.Fatalf("Dashboard as org B: %v", err)
+	}
+	if !dashB.TodaySales.IsZero() {
+		t.Fatalf("RLS FAILED: org B's dashboard shows non-zero TodaySales (%s) — org A's sale leaked through", dashB.TodaySales.StringFixed(0))
+	}
+	if !dashB.TodayPurchases.IsZero() {
+		t.Fatalf("RLS FAILED: org B's dashboard shows non-zero TodayPurchases (%s) — org A's purchase leaked through", dashB.TodayPurchases.StringFixed(0))
+	}
+
+	// And the mirror check: org A must still see its OWN data (proves the
+	// isolation is real filtering, not every query just returning empty).
+	if rows, err := reportingSvc.SalesInvoiceDetail(ctx, fxA.Principal, reportingdomain.Filter{}); err != nil {
+		t.Fatalf("SalesInvoiceDetail as org A: %v", err)
+	} else if len(rows) != 1 {
+		t.Fatalf("org A's own sales invoice report returned %d rows, want 1", len(rows))
+	}
+}
+
+// TestReporting_Dashboard_PerformanceSanityCheck seeds a moderate dataset
+// (not brief §70's full 100k/1M scale — that's Stage 11) and confirms the
+// dashboard summary completes quickly, per docs/adr/0004-dashboard-query-design.md.
+func TestReporting_Dashboard_PerformanceSanityCheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping performance sanity check in -short mode")
+	}
+	ctx := context.Background()
+	salesSvc, purchasesSvc, accountingSvc, _ := newTestAccountingServices(t)
+	reportingSvc := newTestReportingService(t, accountingSvc)
+	fx := setupAccountingFixture(t, ctx, accountingSvc)
+
+	const salesCount, purchaseCount = 500, 200
+	// The fixture only opens 100 PCS of stock — selling 1 unit per
+	// invoice, 500 times, would run out and fail FinalizeDocument on
+	// insufficient stock well before the loop finishes. Top up with one
+	// large warm-up receipt first, separate from (and not counted in)
+	// the purchaseCount documents seeded below.
+	finalizePurchase(t, ctx, purchasesSvc, fx, "10000", "10")
+	for i := 0; i < salesCount; i++ {
+		finalizeSimpleTaxInvoice(t, ctx, salesSvc, fx, "1", "10")
+	}
+	for i := 0; i < purchaseCount; i++ {
+		finalizePurchase(t, ctx, purchasesSvc, fx, "1", "5")
+	}
+
+	start := time.Now()
+	if _, err := reportingSvc.Dashboard(ctx, fx.Principal); err != nil {
+		t.Fatalf("Dashboard: %v", err)
+	}
+	elapsed := time.Since(start)
+	t.Logf("dashboard summary over %d sales + %d purchase documents: %s", salesCount, purchaseCount, elapsed)
+	if elapsed > 2*time.Second {
+		t.Fatalf("dashboard summary took %s for %d+%d documents — too slow for a live-query design (docs/adr/0004)", elapsed, salesCount, purchaseCount)
+	}
+}

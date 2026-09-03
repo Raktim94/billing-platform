@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_purchase_documents_org_status_docdate;
+DROP INDEX IF EXISTS idx_sales_documents_org_status_issuedate;

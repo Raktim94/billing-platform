@@ -72,12 +72,16 @@ part of finishing a stage, not after the fact.
 - [x] Scenario E passing end-to-end: ₹10,000 tax-inclusive credit sale → ₹4,000 receipt → ledger shows exactly ₹6,000 outstanding
 - [x] Unit tests (105/105) + integration tests (62/62, incl. RLS on journals/journal_lines via raw SQL with no org filter in the query — the RLS-itself test, not an app-layer WHERE-clause test) — independently re-verified, one real bug caught by the test suite and fixed (migration declared `NOT NULL DEFAULT ''` on `description`/`reference_number` columns, inconsistent with the nullable+`nullIfEmpty`/`COALESCE` convention every other module in this codebase uses — fixed in the migration before it was ever pushed)
 
-## Stage 7 — Reports / Dashboard
-- [ ] Sales, inventory, purchase, accounting, tax report datasets per brief §22 (full list)
-- [ ] GSTR-1-oriented and GSTR-3B-oriented export preparation (explicitly NOT filing — brief §8)
-- [ ] Export: XLSX/CSV/PDF/JSON, background job + expiring download link for large exports
-- [ ] Dashboard cards + charts (brief §23), materialized/aggregate query design — no raw full-table scans per refresh
-- [ ] Report filters: date/FY/branch/warehouse/GSTIN/customer/product/HSN/salesperson/tax rate/doc type/payment status
+## Stage 7 — Reports / Dashboard ✅ (2026-09-03, two scope notes)
+- [x] Sales: summary (day/month/customer/product/category/salesperson/branch/warehouse), invoice detail, gross profit (**approximate COGS** — current `average_cost`, not historical-at-sale-time; see `domain.GrossProfitRow`'s doc comment and follow-up note below)
+- [x] Purchases: summary (by supplier/product/etc.), document detail — no taxable/tax breakdown yet (purchases still isn't wired through the tax engine, a known gap flagged since Stage 4/6)
+- [x] Inventory: stock valuation, low stock, stock movements
+- [x] Accounting: trial balance, org-wide receivables/payables (batched over Stage 6's existing per-party ageing), account ledger (cash/bank book)
+- [x] Tax: HSN summary, tax-rate summary, GSTR-1-oriented preparation (explicitly labeled NOT a filing submission in both the API response and UI-facing title string) — **GSTR-3B-oriented summary deliberately NOT built**: its inward/ITC side needs purchases' tax-engine wiring, which doesn't exist; building only the outward half risked presenting an incomplete GSTR-3B as if complete, so it's deferred as a real gap rather than shipped half-true
+- [x] Export: CSV/XLSX/JSON/PDF via one shared `internal/platform/export` writer, `?format=` query param on every report endpoint — synchronous only; the background-job + expiring-link half of brief §54 needs `apps/worker`/an outbox mechanism that doesn't exist until Stage 9, documented as a follow-up rather than faked
+- [x] Dashboard: all 8 cards, live indexed queries per `docs/adr/0004-dashboard-query-design.md` (not a materialized table — reasoning + a measured sanity check at ~500+200 documents documented there)
+- [x] Shared filter-building helper (`internal/modules/reporting/pg`'s `whereBuilder`) + a validated `GroupDimension` allow-list for GROUP BY (never raw-string SQL, brief §62)
+- [x] Unit tests (10 new) + integration tests (11 new, incl. a report-specific cross-organisation RLS-leak test across 5 report types and a dashboard performance sanity check) — independently re-verified, one real bug caught and fixed (ambiguous `organisation_id` column reference on every multi-table-join report query — ~10 query sites)
 
 ## Stage 8 — Government Integrations (sandbox only)
 - [ ] `internal/modules/einvoice`: `EInvoiceProvider` interface, `v1` adapter against NIC sandbox (einv-apisandbox.nic.in), persist IRN/ack/signed QR/status per `docs/architecture.md` §9
