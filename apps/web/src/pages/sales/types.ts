@@ -49,6 +49,12 @@ export interface SalesDocumentLine {
   SerialCode: string;
 }
 
+/** Mirrors ewaybill/httpapi.EWB_ELIGIBLE_TYPES's real-world equivalent —
+ * the document types SalesDetailPage shows an EwayBillCard for. Shared
+ * here so BillingPage can label its finalize action accordingly instead
+ * of duplicating the set. */
+export const EWB_ELIGIBLE_TYPES = new Set<DocumentType>(["TAX_INVOICE", "POS_INVOICE", "DELIVERY_CHALLAN", "SALES_RETURN"]);
+
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   QUOTATION: "Quotation",
   PROFORMA_INVOICE: "Proforma invoice",

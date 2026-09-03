@@ -6,9 +6,7 @@ import { api } from "../../lib/api-client";
 import { formatMoney } from "../../lib/money";
 import layout from "../DashboardPage.module.css";
 import styles from "./SalesDetailPage.module.css";
-import { DOCUMENT_TYPE_LABELS, type SalesDocument, type SalesDocumentLine } from "./types";
-
-const EWB_ELIGIBLE_TYPES = new Set(["TAX_INVOICE", "POS_INVOICE", "DELIVERY_CHALLAN", "SALES_RETURN"]);
+import { DOCUMENT_TYPE_LABELS, EWB_ELIGIBLE_TYPES, type SalesDocument, type SalesDocumentLine } from "./types";
 
 export function SalesDetailPage({ id }: { id: string }) {
   const doc = useQuery({
