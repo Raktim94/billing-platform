@@ -1,0 +1,89 @@
+/**
+ * Typed fetch wrapper for apps/server's REST API.
+ *
+ * Auth: the backend issues a Secure/HttpOnly/SameSite session cookie
+ * (internal/modules/identity, Stage 2) — this client never reads or
+ * stores that token itself, it just sends `credentials: "include"` on
+ * every request so the browser attaches the cookie automatically. There
+ * is no bearer-token header anywhere in this file, on purpose.
+ *
+ * Errors: every non-2xx response is expected to carry
+ * `internal/platform/http`'s error envelope,
+ * `{"error":{"code","message","details","request_id"}}` — parsed into
+ * `ApiError` below so callers can branch on `.code` (e.g. "MFA_REQUIRED")
+ * without string-matching a human-readable message.
+ */
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly details: Record<string, unknown> | undefined;
+  readonly requestId: string | undefined;
+
+  constructor(status: number, code: string, message: string, details?: Record<string, unknown>, requestId?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+    this.requestId = requestId;
+  }
+}
+
+interface ErrorEnvelope {
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+    request_id?: string;
+  };
+}
+
+function isErrorEnvelope(v: unknown): v is ErrorEnvelope {
+  return typeof v === "object" && v !== null && "error" in v;
+}
+
+/** Fired whenever a request comes back 401 — the app-level auth state
+ * listens for this to redirect to /login, rather than every single
+ * call site needing to handle it individually. */
+export const AUTH_EVENT = "billing-platform:unauthorized";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
+  });
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await res.text();
+  const body: unknown = text ? JSON.parse(text) : undefined;
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent(AUTH_EVENT));
+    }
+    if (isErrorEnvelope(body)) {
+      throw new ApiError(res.status, body.error.code, body.error.message, body.error.details, body.error.request_id);
+    }
+    throw new ApiError(res.status, "UNKNOWN_ERROR", `Request failed with status ${res.status}`);
+  }
+
+  return body as T;
+}
+
+export const api = {
+  get: <T>(path: string) => request<T>(path, { method: "GET" }),
+  post: <T>(path: string, data?: unknown) =>
+    request<T>(path, { method: "POST", body: data !== undefined ? JSON.stringify(data) : undefined }),
+  put: <T>(path: string, data?: unknown) =>
+    request<T>(path, { method: "PUT", body: data !== undefined ? JSON.stringify(data) : undefined }),
+};

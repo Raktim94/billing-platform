@@ -1,0 +1,148 @@
+/*
+ * Design tokens — billing-platform
+ *
+ * Direction: a working ledger, not a consumer dashboard. The audience is
+ * a shop owner or billing-counter operator who is in this screen all day;
+ * the job of every choice here is legibility and trust, not delight.
+ * Cool paper (not the cliché warm-cream #F4F1EA), a single confident
+ * accent (deep emerald — evoking traditional green ledger paper and
+ * "money" without reaching for a neon/consumer green), and tabular
+ * numerals everywhere a number appears, so columns of rupee figures
+ * actually line up the way they would on a printed statement.
+ *
+ * Type: Space Grotesk (display — used sparingly, headings/wordmark only),
+ * IBM Plex Sans (body — built for data-dense UI, distinct from the
+ * ubiquitous Inter default), IBM Plex Mono (financial figures — real
+ * tabular digits, not a decorative monospace choice). All three are
+ * self-hosted via @fontsource (no runtime call to Google Fonts or any
+ * other external host — consistent with this project's "no external
+ * connection required for core operation" principle, docs/architecture.md
+ * §9b / README).
+ *
+ * Theme: light tokens on bare :root; dark tokens applied twice — once
+ * under prefers-color-scheme for the "system" default, once under
+ * [data-theme="dark"] for an explicit user toggle — so both paths work
+ * without relying on native CSS nesting (kept out for broad Android
+ * WebView / older-browser compatibility, since this app targets
+ * billing-counter tablets, not just modern desktop browsers).
+ */
+
+:root {
+  --color-bg: #f6f7f5;
+  --color-surface: #ffffff;
+  --color-surface-alt: #eef0ec;
+  --color-border: #dbdfd8;
+  --color-border-strong: #c3cac0;
+  --color-text: #16211c;
+  --color-text-muted: #5b6b62;
+  --color-text-faint: #8a978f;
+
+  --color-accent: #0f6e5c;
+  --color-accent-hover: #0c5a4b;
+  --color-accent-soft: #e3f0ec;
+  --color-on-accent: #ffffff;
+
+  --color-positive: #1c8a5d;
+  --color-positive-soft: #e5f4ec;
+  --color-negative: #b3452f;
+  --color-negative-soft: #fbeae5;
+  --color-warning: #9a6b0a;
+  --color-warning-soft: #fbf1de;
+
+  --color-focus-ring: #0f6e5c;
+
+  --shadow-card: 0 1px 2px rgba(22, 33, 28, 0.06), 0 1px 1px rgba(22, 33, 28, 0.04);
+  --shadow-popover: 0 8px 24px rgba(22, 33, 28, 0.14);
+
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --nav-width: 232px;
+  --nav-width-collapsed: 64px;
+  --topbar-height: 56px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #101613;
+    --color-surface: #171f1c;
+    --color-surface-alt: #1e2723;
+    --color-border: #2b3632;
+    --color-border-strong: #3c4a44;
+    --color-text: #e9efe9;
+    --color-text-muted: #9db0a4;
+    --color-text-faint: #71847a;
+
+    --color-accent: #29c191;
+    --color-accent-hover: #3ed6a5;
+    --color-accent-soft: #12332a;
+    --color-on-accent: #06110d;
+
+    --color-positive: #34c188;
+    --color-positive-soft: #123329;
+    --color-negative: #e2896a;
+    --color-negative-soft: #3a1f17;
+    --color-warning: #e0b355;
+    --color-warning-soft: #362c15;
+
+    --color-focus-ring: #29c191;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
+    --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #101613;
+  --color-surface: #171f1c;
+  --color-surface-alt: #1e2723;
+  --color-border: #2b3632;
+  --color-border-strong: #3c4a44;
+  --color-text: #e9efe9;
+  --color-text-muted: #9db0a4;
+  --color-text-faint: #71847a;
+
+  --color-accent: #29c191;
+  --color-accent-hover: #3ed6a5;
+  --color-accent-soft: #12332a;
+  --color-on-accent: #06110d;
+
+  --color-positive: #34c188;
+  --color-positive-soft: #123329;
+  --color-negative: #e2896a;
+  --color-negative-soft: #3a1f17;
+  --color-warning: #e0b355;
+  --color-warning-soft: #362c15;
+
+  --color-focus-ring: #29c191;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
+}
