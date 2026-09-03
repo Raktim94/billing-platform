@@ -36,7 +36,7 @@ func mkBill(grandTotal string, supplyState string, vehicle, distance string, hsn
 func TestEvaluate_BelowThreshold_NotRequired(t *testing.T) {
 	rules := []Rule{mkRule(nil, "50000", "2018-04-01", nil)}
 	bill := mkBill("49999.99", "27", "KA01AB1234", "50", "998877")
-	req, missing := Evaluate(rules, bill)
+	req, missing := Evaluate(rules, bill, bill.InvoiceDate)
 	if req != NotRequired || missing != nil {
 		t.Fatalf("got req=%s missing=%v, want NOT_REQUIRED/nil", req, missing)
 	}
@@ -49,7 +49,7 @@ func TestEvaluate_AtThreshold_RequiresGeneration(t *testing.T) {
 	// requiring, the safer legal-compliance direction: never under-flag).
 	rules := []Rule{mkRule(nil, "50000", "2018-04-01", nil)}
 	bill := mkBill("50000", "27", "KA01AB1234", "50", "998877")
-	req, _ := Evaluate(rules, bill)
+	req, _ := Evaluate(rules, bill, bill.InvoiceDate)
 	if req == NotRequired {
 		t.Fatal("at-threshold consignment value must NOT be treated as NOT_REQUIRED")
 	}
@@ -58,7 +58,7 @@ func TestEvaluate_AtThreshold_RequiresGeneration(t *testing.T) {
 func TestEvaluate_AboveThreshold_ReadyWhenComplete(t *testing.T) {
 	rules := []Rule{mkRule(nil, "50000", "2018-04-01", nil)}
 	bill := mkBill("100000", "27", "KA01AB1234", "50", "998877")
-	req, missing := Evaluate(rules, bill)
+	req, missing := Evaluate(rules, bill, bill.InvoiceDate)
 	if req != Ready || missing != nil {
 		t.Fatalf("got req=%s missing=%v, want READY/nil", req, missing)
 	}
@@ -67,7 +67,7 @@ func TestEvaluate_AboveThreshold_ReadyWhenComplete(t *testing.T) {
 func TestEvaluate_AboveThreshold_MissingVehicle_NeedsInformation(t *testing.T) {
 	rules := []Rule{mkRule(nil, "50000", "2018-04-01", nil)}
 	bill := mkBill("100000", "27", "", "50", "998877") // no vehicle
-	req, missing := Evaluate(rules, bill)
+	req, missing := Evaluate(rules, bill, bill.InvoiceDate)
 	if req != NeedsInformation {
 		t.Fatalf("got req=%s, want NEEDS_INFORMATION", req)
 	}
@@ -85,7 +85,7 @@ func TestEvaluate_AboveThreshold_MissingVehicle_NeedsInformation(t *testing.T) {
 func TestEvaluate_AboveThreshold_MissingHSN_NeedsInformation(t *testing.T) {
 	rules := []Rule{mkRule(nil, "50000", "2018-04-01", nil)}
 	bill := mkBill("100000", "27", "KA01AB1234", "50", "") // no HSN
-	req, missing := Evaluate(rules, bill)
+	req, missing := Evaluate(rules, bill, bill.InvoiceDate)
 	if req != NeedsInformation || len(missing) == 0 {
 		t.Fatalf("got req=%s missing=%v, want NEEDS_INFORMATION with an HSN complaint", req, missing)
 	}
@@ -101,7 +101,7 @@ func TestEvaluate_RuleVersioning_PicksRuleValidOnInvoiceDate(t *testing.T) {
 	// currently-applicable rule's 50000 — proves the CURRENT rule is used,
 	// not an expired one that happens to be more restrictive.
 	bill := mkBill("10000", "27", "KA01AB1234", "50", "998877")
-	req, _ := Evaluate(rules, bill)
+	req, _ := Evaluate(rules, bill, bill.InvoiceDate)
 	if req != NotRequired {
 		t.Fatalf("got req=%s, want NOT_REQUIRED (the applicable rule's 50000 threshold, not the expired 5000 one)", req)
 	}
@@ -114,14 +114,44 @@ func TestEvaluate_StateSpecificRule_OverridesNational(t *testing.T) {
 		mkRule(&ka, "100000", "2018-04-01", nil), // Karnataka-specific override
 	}
 	bill := mkBill("75000", "29", "KA01AB1234", "50", "998877") // above national, below KA's override
-	req, _ := Evaluate(rules, bill)
+	req, _ := Evaluate(rules, bill, bill.InvoiceDate)
 	if req != NotRequired {
 		t.Fatalf("got req=%s, want NOT_REQUIRED (state-specific 100000 threshold should apply, not the national 50000)", req)
 	}
 }
 
+func TestEvaluate_InvoiceOlderThan180Days_NotReady(t *testing.T) {
+	rules := []Rule{mkRule(nil, "50000", "2018-04-01", nil)}
+	bill := mkBill("100000", "27", "KA01AB1234", "50", "998877") // otherwise complete — would be Ready
+	now := bill.InvoiceDate.Add(181 * 24 * time.Hour)
+	req, missing := Evaluate(rules, bill, now)
+	if req == Ready {
+		t.Fatal("a 181-day-old, otherwise-complete invoice must not be reported Ready — the real government portal refuses e-Way Bill generation past 180 days")
+	}
+	found := false
+	for _, m := range missing {
+		if m.Field == "invoice_date" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing list %v does not explain the 180-day-age rejection", missing)
+	}
+}
+
+func TestEvaluate_InvoiceWithin180Days_StillReady(t *testing.T) {
+	rules := []Rule{mkRule(nil, "50000", "2018-04-01", nil)}
+	bill := mkBill("100000", "27", "KA01AB1234", "50", "998877")
+	now := bill.InvoiceDate.Add(179 * 24 * time.Hour)
+	req, missing := Evaluate(rules, bill, now)
+	if req != Ready || missing != nil {
+		t.Fatalf("got req=%s missing=%v, want READY/nil at 179 days (must not false-positive before the real 180-day boundary)", req, missing)
+	}
+}
+
 func TestEvaluate_NoApplicableRule_NeedsInformation(t *testing.T) {
-	req, missing := Evaluate(nil, mkBill("100000", "27", "KA01AB1234", "50", "998877"))
+	bill := mkBill("100000", "27", "KA01AB1234", "50", "998877")
+	req, missing := Evaluate(nil, bill, bill.InvoiceDate)
 	if req != NeedsInformation || len(missing) == 0 {
 		t.Fatalf("got req=%s missing=%v, want NEEDS_INFORMATION (never silently skip a legally-required e-Way Bill for lack of configured rules)", req, missing)
 	}

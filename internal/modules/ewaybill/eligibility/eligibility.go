@@ -63,12 +63,25 @@ type MissingInfo struct {
 	Reason string
 }
 
+// MaxInvoiceAgeForGeneration is the real government rule, effective
+// 2026-01-01: the e-Way Bill portal refuses to generate an e-Way Bill
+// against a base document (invoice/bill of supply/delivery challan) older
+// than 180 days from its date. Verified against current (2026) sources
+// during the deliverable review this constant was added for — not a
+// number this codebase invented. A document past this age can still be
+// evaluated (so the UI can explain *why* it's blocked), but Evaluate
+// never reports it Ready.
+const MaxInvoiceAgeForGeneration = 180 * 24 * time.Hour
+
 // Evaluate implements EvaluateEWayBillRequirement(invoice) (docs/
 // architecture.md §9b). rules should be every currently-loaded Rule
 // (typically all of Repository.ListActive's result); Evaluate itself
 // picks the one applicable to c.InvoiceDate and c.SupplyPlaceCode —
-// state-specific rule first, national default as fallback.
-func Evaluate(rules []Rule, c canonical.CanonicalEWayBill) (Requirement, []MissingInfo) {
+// state-specific rule first, national default as fallback. now is
+// injected (not time.Now() called internally) so this stays pure and
+// testable without a clock dependency, same convention as the rest of
+// this package.
+func Evaluate(rules []Rule, c canonical.CanonicalEWayBill, now time.Time) (Requirement, []MissingInfo) {
 	rule, ok := selectRule(rules, c.SupplyPlaceCode, c.InvoiceDate)
 	if !ok {
 		// No applicable rule at all is a data problem, not "not required" —
@@ -82,6 +95,13 @@ func Evaluate(rules []Rule, c canonical.CanonicalEWayBill) (Requirement, []Missi
 	}
 
 	var missing []MissingInfo
+	if age := now.Sub(c.InvoiceDate); age > MaxInvoiceAgeForGeneration {
+		// A real portal rejection waiting to happen, not a soft warning —
+		// surfaced as MissingInfo (not silently "Ready") so PrepareUpload's
+		// existing "Requirement != Ready" guard blocks it, same as any
+		// other incomplete field.
+		missing = append(missing, MissingInfo{Field: "invoice_date", Reason: "this document is older than 180 days — the government portal will not generate an e-Way Bill against it"})
+	}
 	if c.Transport.VehicleNumber == "" {
 		missing = append(missing, MissingInfo{Field: "vehicle_number", Reason: "no vehicle selected"})
 	}

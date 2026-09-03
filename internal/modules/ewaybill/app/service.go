@@ -292,7 +292,7 @@ func (s *Service) EvaluateEligibility(ctx context.Context, orgID, salesDocumentI
 	if err != nil {
 		return nil, fmt.Errorf("ewaybill: loading eligibility rules: %w", err)
 	}
-	req, missing := eligibility.Evaluate(rules, bill)
+	req, missing := eligibility.Evaluate(rules, bill, s.now())
 
 	status := domain.StatusNotRequired
 	switch req {
