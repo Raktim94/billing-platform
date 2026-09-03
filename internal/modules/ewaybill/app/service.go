@@ -106,7 +106,7 @@ type GenerateParams struct {
 // it's added). Idempotent the same way einvoice is: an existing GENERATED
 // record for this sales document is left alone.
 func (s *Service) GenerateForDocument(ctx context.Context, orgID uuid.UUID, p GenerateParams) (*domain.Record, error) {
-	existing, err := s.records.GetBySalesDocumentID(ctx, p.SalesDocumentID)
+	existing, err := s.records.GetBySalesDocumentID(ctx, orgID, p.SalesDocumentID)
 	if err != nil && err != domain.ErrNotFound {
 		return nil, fmt.Errorf("ewaybill: loading existing record: %w", err)
 	}
@@ -136,7 +136,7 @@ func (s *Service) GenerateForDocument(ctx context.Context, orgID uuid.UUID, p Ge
 		existing = rec
 	}
 
-	if err := s.records.UpdateStatus(ctx, existing.ID, domain.StatusSubmitting, domain.UpdateFields{}); err != nil {
+	if err := s.records.UpdateStatus(ctx, orgID, existing.ID, domain.StatusSubmitting, domain.UpdateFields{}); err != nil {
 		return nil, fmt.Errorf("ewaybill: marking submitting: %w", err)
 	}
 
@@ -146,7 +146,7 @@ func (s *Service) GenerateForDocument(ctx context.Context, orgID uuid.UUID, p Ge
 	})
 	if genErr != nil {
 		msg := genErr.Error()
-		if updErr := s.records.UpdateStatus(ctx, existing.ID, domain.StatusFailedRetryable, domain.UpdateFields{ErrorMessage: &msg}); updErr != nil {
+		if updErr := s.records.UpdateStatus(ctx, orgID, existing.ID, domain.StatusFailedRetryable, domain.UpdateFields{ErrorMessage: &msg}); updErr != nil {
 			return nil, fmt.Errorf("ewaybill: marking failed-retryable: %w", updErr)
 		}
 		return nil, fmt.Errorf("ewaybill: GenerateEWayBillByIRN: %w", genErr)
@@ -154,7 +154,7 @@ func (s *Service) GenerateForDocument(ctx context.Context, orgID uuid.UUID, p Ge
 
 	ewbNo := resp.EWBNumber
 	validFrom, validUntil := resp.ValidFrom, resp.ValidUntil
-	if err := s.records.UpdateStatus(ctx, existing.ID, domain.StatusGenerated, domain.UpdateFields{
+	if err := s.records.UpdateStatus(ctx, orgID, existing.ID, domain.StatusGenerated, domain.UpdateFields{
 		EWBNumber: &ewbNo, ValidFrom: &validFrom, ValidUntil: &validUntil,
 	}); err != nil {
 		return nil, fmt.Errorf("ewaybill: marking generated: %w", err)
@@ -166,37 +166,37 @@ func (s *Service) GenerateForDocument(ctx context.Context, orgID uuid.UUID, p Ge
 
 // UpdatePartB records a vehicle/transporter change en route — appended to
 // history (brief §10's "Part-B history"), not overwritten.
-func (s *Service) UpdatePartB(ctx context.Context, id uuid.UUID, update domain.PartBUpdate) error {
+func (s *Service) UpdatePartB(ctx context.Context, orgID, id uuid.UUID, update domain.PartBUpdate) error {
 	update.At = s.now()
-	return s.records.AppendPartBHistory(ctx, id, update)
+	return s.records.AppendPartBHistory(ctx, orgID, id, update)
 }
 
 // Close implements the 2026-08-01 GSTN voluntary EWB closure facility
 // (docs/research.md): supplier/recipient/transporter/driver marks an
 // already-GENERATED EWB CLOSED (the shipment happened) — distinct from
 // Cancel (the movement never happened).
-func (s *Service) Close(ctx context.Context, id uuid.UUID, role domain.ClosedByRole) error {
+func (s *Service) Close(ctx context.Context, orgID, id uuid.UUID, role domain.ClosedByRole) error {
 	switch role {
 	case domain.ClosedBySupplier, domain.ClosedByRecipient, domain.ClosedByTransporter, domain.ClosedByDriver:
 	default:
 		return domain.ErrInvalidCloseRole
 	}
 	now := time.Now()
-	return s.records.UpdateStatus(ctx, id, domain.StatusClosed, domain.UpdateFields{ClosedAt: &now, ClosedByRole: &role})
+	return s.records.UpdateStatus(ctx, orgID, id, domain.StatusClosed, domain.UpdateFields{ClosedAt: &now, ClosedByRole: &role})
 }
 
 // GetRecordForDocument is a thin read wrapper for httpapi's status
 // endpoint — domain.ErrNotFound (unwrapped) means no e-Way Bill record
 // exists yet for this document at all, distinct from NOT_REQUIRED, which
 // is a record that exists and was evaluated as not needed.
-func (s *Service) GetRecordForDocument(ctx context.Context, salesDocumentID uuid.UUID) (*domain.Record, error) {
-	return s.records.GetBySalesDocumentID(ctx, salesDocumentID)
+func (s *Service) GetRecordForDocument(ctx context.Context, orgID, salesDocumentID uuid.UUID) (*domain.Record, error) {
+	return s.records.GetBySalesDocumentID(ctx, orgID, salesDocumentID)
 }
 
 // Cancel marks an EWB CANCELLED (the movement never happened), as opposed
 // to Close (it happened, it's just no longer in transit).
-func (s *Service) Cancel(ctx context.Context, salesDocumentID uuid.UUID, reason string) error {
-	rec, err := s.records.GetBySalesDocumentID(ctx, salesDocumentID)
+func (s *Service) Cancel(ctx context.Context, orgID, salesDocumentID uuid.UUID, reason string) error {
+	rec, err := s.records.GetBySalesDocumentID(ctx, orgID, salesDocumentID)
 	if err != nil {
 		return fmt.Errorf("ewaybill: loading record to cancel: %w", err)
 	}
@@ -207,7 +207,7 @@ func (s *Service) Cancel(ctx context.Context, salesDocumentID uuid.UUID, reason 
 		return fmt.Errorf("ewaybill: provider cancel: %w", err)
 	}
 	now := time.Now()
-	return s.records.UpdateStatus(ctx, rec.ID, domain.StatusCancelled, domain.UpdateFields{CancelledAt: &now, CancelReason: &reason})
+	return s.records.UpdateStatus(ctx, rec.OrganisationID, rec.ID, domain.StatusCancelled, domain.UpdateFields{CancelledAt: &now, CancelReason: &reason})
 }
 
 // ============================================================
@@ -241,7 +241,7 @@ type TransportInfoParams struct {
 // inside a caller-provided RunScoped block. Requires a record to already
 // exist (call EvaluateEligibility first).
 func (s *Service) UpdateTransportInfo(ctx context.Context, orgID, salesDocumentID uuid.UUID, p TransportInfoParams) (*EligibilityResult, error) {
-	rec, err := s.records.GetBySalesDocumentID(ctx, salesDocumentID)
+	rec, err := s.records.GetBySalesDocumentID(ctx, orgID, salesDocumentID)
 	if err != nil {
 		return nil, fmt.Errorf("ewaybill: loading record: %w", err)
 	}
@@ -265,7 +265,7 @@ func (s *Service) UpdateTransportInfo(ctx context.Context, orgID, salesDocumentI
 	if err != nil {
 		return nil, fmt.Errorf("ewaybill: marshaling updated snapshot: %w", err)
 	}
-	if err := s.records.UpdateStatus(ctx, rec.ID, rec.Status, domain.UpdateFields{CanonicalSnapshot: snapshot}); err != nil {
+	if err := s.records.UpdateStatus(ctx, orgID, rec.ID, rec.Status, domain.UpdateFields{CanonicalSnapshot: snapshot}); err != nil {
 		return nil, fmt.Errorf("ewaybill: persisting updated snapshot: %w", err)
 	}
 	return s.EvaluateEligibility(ctx, orgID, salesDocumentID)
@@ -304,7 +304,7 @@ func (s *Service) EvaluateEligibility(ctx context.Context, orgID, salesDocumentI
 		status = domain.StatusNeedsInformation // REQUIRED-but-not-yet-evaluated-for-completeness collapses to NEEDS_INFORMATION until Ready
 	}
 	if !rec.Status.Terminal() || rec.Status == domain.StatusNotRequired {
-		if err := s.records.UpdateStatus(ctx, rec.ID, status, domain.UpdateFields{}); err != nil {
+		if err := s.records.UpdateStatus(ctx, orgID, rec.ID, status, domain.UpdateFields{}); err != nil {
 			return nil, fmt.Errorf("ewaybill: updating eligibility status: %w", err)
 		}
 	}
@@ -328,7 +328,7 @@ func (s *Service) PrepareFreePortalUpload(ctx context.Context, orgID, salesDocum
 		return portal.PreparedFile{}, nil, fmt.Errorf("ewaybill: cannot prepare upload, missing information: %+v", elig.Missing)
 	}
 
-	rec, err := s.records.GetBySalesDocumentID(ctx, salesDocumentID)
+	rec, err := s.records.GetBySalesDocumentID(ctx, orgID, salesDocumentID)
 	if err != nil {
 		return portal.PreparedFile{}, nil, fmt.Errorf("ewaybill: loading record: %w", err)
 	}
@@ -337,19 +337,19 @@ func (s *Service) PrepareFreePortalUpload(ctx context.Context, orgID, salesDocum
 		return portal.PreparedFile{}, nil, fmt.Errorf("ewaybill: unmarshaling stored canonical snapshot: %w", err)
 	}
 
-	if err := s.records.UpdateStatus(ctx, rec.ID, domain.StatusPreparing, domain.UpdateFields{}); err != nil {
+	if err := s.records.UpdateStatus(ctx, orgID, rec.ID, domain.StatusPreparing, domain.UpdateFields{}); err != nil {
 		return portal.PreparedFile{}, nil, fmt.Errorf("ewaybill: marking preparing: %w", err)
 	}
 
 	file, err := s.exporter.PrepareUpload(ctx, bill)
 	if err != nil {
 		msg := err.Error()
-		_ = s.records.UpdateStatus(ctx, rec.ID, domain.StatusNeedsInformation, domain.UpdateFields{ErrorMessage: &msg})
+		_ = s.records.UpdateStatus(ctx, orgID, rec.ID, domain.StatusNeedsInformation, domain.UpdateFields{ErrorMessage: &msg})
 		return portal.PreparedFile{}, nil, fmt.Errorf("ewaybill: preparing portal upload: %w", err)
 	}
 
 	now := s.now()
-	if err := s.records.UpdateStatus(ctx, rec.ID, domain.StatusAwaitingPortalCompletion, domain.UpdateFields{
+	if err := s.records.UpdateStatus(ctx, orgID, rec.ID, domain.StatusAwaitingPortalCompletion, domain.UpdateFields{
 		PreparedFileName: &file.FileName, PreparedAt: &now,
 	}); err != nil {
 		return portal.PreparedFile{}, nil, fmt.Errorf("ewaybill: marking awaiting portal completion: %w", err)
@@ -376,12 +376,12 @@ type ManualResultParams struct {
 }
 
 func (s *Service) RecordManualResult(ctx context.Context, orgID, salesDocumentID uuid.UUID, p ManualResultParams) (*domain.Record, error) {
-	rec, err := s.records.GetBySalesDocumentID(ctx, salesDocumentID)
+	rec, err := s.records.GetBySalesDocumentID(ctx, orgID, salesDocumentID)
 	if err != nil {
 		return nil, fmt.Errorf("ewaybill: loading record: %w", err)
 	}
 	src := domain.SourceManualPortal
-	if err := s.records.UpdateStatus(ctx, rec.ID, domain.StatusGenerated, domain.UpdateFields{
+	if err := s.records.UpdateStatus(ctx, orgID, rec.ID, domain.StatusGenerated, domain.UpdateFields{
 		EWBNumber: &p.EWBNumber, ValidFrom: &p.ValidFrom, ValidUntil: &p.ValidUntil, Source: &src,
 	}); err != nil {
 		return nil, fmt.Errorf("ewaybill: recording manual result: %w", err)
@@ -410,7 +410,7 @@ type ImportedResultParams struct {
 // invoice's own immutable snapshot — never auto-attaches a result that
 // might belong to a different invoice.
 func (s *Service) ImportAndVerifyResult(ctx context.Context, orgID, salesDocumentID uuid.UUID, p ImportedResultParams) (*domain.Record, error) {
-	rec, err := s.records.GetBySalesDocumentID(ctx, salesDocumentID)
+	rec, err := s.records.GetBySalesDocumentID(ctx, orgID, salesDocumentID)
 	if err != nil {
 		return nil, fmt.Errorf("ewaybill: loading record: %w", err)
 	}
@@ -427,7 +427,7 @@ func (s *Service) ImportAndVerifyResult(ctx context.Context, orgID, salesDocumen
 		return nil, domain.ErrResultMismatch
 	}
 	src := domain.SourceImportedFile
-	if err := s.records.UpdateStatus(ctx, rec.ID, domain.StatusGenerated, domain.UpdateFields{
+	if err := s.records.UpdateStatus(ctx, orgID, rec.ID, domain.StatusGenerated, domain.UpdateFields{
 		EWBNumber: &p.EWBNumber, ValidFrom: &p.ValidFrom, ValidUntil: &p.ValidUntil, Source: &src,
 	}); err != nil {
 		return nil, fmt.Errorf("ewaybill: recording imported result: %w", err)
@@ -448,7 +448,7 @@ func (s *Service) ImportAndVerifyResult(ctx context.Context, orgID, salesDocumen
 // what makes the API-failure-to-free-portal fallback (§9b) "just work"
 // with no special-case code: the same underlying invoice, a new row.
 func (s *Service) getOrCreateFreePortalRecord(ctx context.Context, orgID, salesDocumentID uuid.UUID) (*domain.Record, canonical.CanonicalEWayBill, error) {
-	existing, err := s.records.GetBySalesDocumentID(ctx, salesDocumentID)
+	existing, err := s.records.GetBySalesDocumentID(ctx, orgID, salesDocumentID)
 	if err != nil && err != domain.ErrNotFound {
 		return nil, canonical.CanonicalEWayBill{}, fmt.Errorf("ewaybill: loading existing record: %w", err)
 	}
@@ -481,7 +481,7 @@ func (s *Service) getOrCreateFreePortalRecord(ctx context.Context, orgID, salesD
 	if err := s.records.Create(ctx, rec); err != nil {
 		return nil, canonical.CanonicalEWayBill{}, fmt.Errorf("ewaybill: creating free-portal record: %w", err)
 	}
-	if err := s.records.UpdateStatus(ctx, rec.ID, domain.StatusNotRequired, domain.UpdateFields{CanonicalSnapshot: snapshot}); err != nil {
+	if err := s.records.UpdateStatus(ctx, orgID, rec.ID, domain.StatusNotRequired, domain.UpdateFields{CanonicalSnapshot: snapshot}); err != nil {
 		return nil, canonical.CanonicalEWayBill{}, fmt.Errorf("ewaybill: persisting canonical snapshot: %w", err)
 	}
 	rec.CanonicalSnapshot = snapshot

@@ -159,15 +159,15 @@ type UpdateFields struct {
 }
 
 type Repository interface {
-	GetBySalesDocumentID(ctx context.Context, salesDocumentID uuid.UUID) (*Record, error)
+	GetBySalesDocumentID(ctx context.Context, orgID, salesDocumentID uuid.UUID) (*Record, error)
 	Create(ctx context.Context, r *Record) error
-	UpdateStatus(ctx context.Context, id uuid.UUID, status Status, fields UpdateFields) error
+	UpdateStatus(ctx context.Context, orgID, id uuid.UUID, status Status, fields UpdateFields) error
 	// AppendPartBHistory is separate from UpdateStatus because it's an
 	// append (jsonb ||), not a COALESCE-if-set overwrite like every other
 	// field — folding both patterns into one dynamic query invites bugs;
 	// two narrow, obviously-correct queries are worth more here than one
 	// clever one.
-	AppendPartBHistory(ctx context.Context, id uuid.UUID, entry PartBUpdate) error
+	AppendPartBHistory(ctx context.Context, orgID, id uuid.UUID, entry PartBUpdate) error
 }
 
 var (

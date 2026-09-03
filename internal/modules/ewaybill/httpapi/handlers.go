@@ -108,7 +108,7 @@ func (h *Handlers) getStatus(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		rec, err = h.svc.GetRecordForDocument(ctx, docID)
+		rec, err = h.svc.GetRecordForDocument(ctx, p.OrganisationID, docID)
 		return err
 	})
 	if err != nil {

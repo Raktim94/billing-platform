@@ -26,10 +26,19 @@ func TestRLS_BlocksCrossOrganisationReads(t *testing.T) {
 
 	// Org A's branch (created during provisioning) must be invisible to a
 	// transaction scoped to Org B, even though the query asks for that
-	// exact branch ID by primary key.
+	// exact branch ID by primary key. GetByID now also filters by
+	// organisation_id at the app layer (docs/adr/0006) in addition to
+	// RLS, so passing orgB's own ID here still exercises real
+	// cross-tenant isolation end to end — it just means this specific
+	// call no longer isolates "RLS with zero app-layer help" the way it
+	// used to. That narrower "RLS alone, raw SQL, no app-layer filter"
+	// guarantee is exercised elsewhere in this suite (e.g.
+	// accounting_test.go, webhooks_test.go) via queries that bypass the
+	// repository layer entirely — it has not been separately re-proven
+	// for the branches table specifically after this change.
 	var found bool
 	err := sharedPool.RunScoped(ctx, orgB.OrganisationID, func(ctx context.Context) error {
-		_, getErr := branchRepo.GetByID(ctx, orgA.BranchID)
+		_, getErr := branchRepo.GetByID(ctx, orgB.OrganisationID, orgA.BranchID)
 		found = getErr == nil
 		return nil
 	})
@@ -42,7 +51,7 @@ func TestRLS_BlocksCrossOrganisationReads(t *testing.T) {
 
 	// And must be visible again when correctly scoped to Org A.
 	err = sharedPool.RunScoped(ctx, orgA.OrganisationID, func(ctx context.Context) error {
-		_, getErr := branchRepo.GetByID(ctx, orgA.BranchID)
+		_, getErr := branchRepo.GetByID(ctx, orgA.OrganisationID, orgA.BranchID)
 		found = getErr == nil
 		return getErr
 	})

@@ -55,16 +55,16 @@ type Preference struct {
 
 type VehicleRepository interface {
 	Create(ctx context.Context, v *Vehicle) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Vehicle, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Vehicle, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID, activeOnly bool) ([]*Vehicle, error)
-	Deactivate(ctx context.Context, id uuid.UUID) error
+	Deactivate(ctx context.Context, orgID, id uuid.UUID) error
 }
 
 type TransporterRepository interface {
 	Create(ctx context.Context, t *Transporter) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Transporter, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Transporter, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID, activeOnly bool) ([]*Transporter, error)
-	Deactivate(ctx context.Context, id uuid.UUID) error
+	Deactivate(ctx context.Context, orgID, id uuid.UUID) error
 }
 
 type PreferenceRepository interface {

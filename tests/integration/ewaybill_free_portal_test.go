@@ -97,7 +97,7 @@ func ewaybillRecordRepoGetScoped(t *testing.T, ctx context.Context, orgID, sales
 	var rec *domain.Record
 	err := sharedPool.RunScoped(ctx, orgID, func(ctx context.Context) error {
 		var getErr error
-		rec, getErr = ewaybillRecordRepoGet(ctx, salesDocumentID)
+		rec, getErr = ewaybillRecordRepoGet(ctx, orgID, salesDocumentID)
 		return getErr
 	})
 	if err != nil {

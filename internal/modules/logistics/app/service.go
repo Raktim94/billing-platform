@@ -80,7 +80,7 @@ func (s *Service) DeactivateVehicle(ctx context.Context, principal permissions.P
 		return err
 	}
 	return s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
-		return s.vehicles.Deactivate(ctx, id)
+		return s.vehicles.Deactivate(ctx, principal.OrganisationID, id)
 	})
 }
 
@@ -136,7 +136,7 @@ func (s *Service) DeactivateTransporter(ctx context.Context, principal permissio
 		return err
 	}
 	return s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
-		return s.transporters.Deactivate(ctx, id)
+		return s.transporters.Deactivate(ctx, principal.OrganisationID, id)
 	})
 }
 

@@ -58,8 +58,8 @@ func scanVehicle(row pgx.Row) (*domain.Vehicle, error) {
 
 const vehicleCols = "id, organisation_id, registration_number, nickname, vehicle_type, default_transport_mode, active, created_at, updated_at"
 
-func (r *VehicleRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Vehicle, error) {
-	row := r.pool.Q(ctx).QueryRow(ctx, `SELECT `+vehicleCols+` FROM vehicles WHERE id = $1`, id)
+func (r *VehicleRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Vehicle, error) {
+	row := r.pool.Q(ctx).QueryRow(ctx, `SELECT `+vehicleCols+` FROM vehicles WHERE organisation_id = $1 AND id = $2`, orgID, id)
 	v, err := scanVehicle(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -92,10 +92,13 @@ func (r *VehicleRepo) ListByOrganisation(ctx context.Context, orgID uuid.UUID, a
 	return out, rows.Err()
 }
 
-func (r *VehicleRepo) Deactivate(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Q(ctx).Exec(ctx, `UPDATE vehicles SET active = false, updated_at = now() WHERE id = $1`, id)
+func (r *VehicleRepo) Deactivate(ctx context.Context, orgID, id uuid.UUID) error {
+	n, err := r.pool.Q(ctx).Exec(ctx, `UPDATE vehicles SET active = false, updated_at = now() WHERE organisation_id = $1 AND id = $2`, orgID, id)
 	if err != nil {
 		return fmt.Errorf("logistics: deactivating vehicle: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrNotFound
 	}
 	return nil
 }
@@ -132,8 +135,8 @@ func scanTransporter(row pgx.Row) (*domain.Transporter, error) {
 
 const transporterCols = "id, organisation_id, name, transporter_id, gstin, phone, address, default_transport_mode, active, created_at, updated_at"
 
-func (r *TransporterRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Transporter, error) {
-	row := r.pool.Q(ctx).QueryRow(ctx, `SELECT `+transporterCols+` FROM transporters WHERE id = $1`, id)
+func (r *TransporterRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Transporter, error) {
+	row := r.pool.Q(ctx).QueryRow(ctx, `SELECT `+transporterCols+` FROM transporters WHERE organisation_id = $1 AND id = $2`, orgID, id)
 	t, err := scanTransporter(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -166,10 +169,13 @@ func (r *TransporterRepo) ListByOrganisation(ctx context.Context, orgID uuid.UUI
 	return out, rows.Err()
 }
 
-func (r *TransporterRepo) Deactivate(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Q(ctx).Exec(ctx, `UPDATE transporters SET active = false, updated_at = now() WHERE id = $1`, id)
+func (r *TransporterRepo) Deactivate(ctx context.Context, orgID, id uuid.UUID) error {
+	n, err := r.pool.Q(ctx).Exec(ctx, `UPDATE transporters SET active = false, updated_at = now() WHERE organisation_id = $1 AND id = $2`, orgID, id)
 	if err != nil {
 		return fmt.Errorf("logistics: deactivating transporter: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrNotFound
 	}
 	return nil
 }

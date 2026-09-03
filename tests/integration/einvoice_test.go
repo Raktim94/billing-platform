@@ -306,7 +306,7 @@ func TestEwaybill_ShipToGSTINAndVoluntaryClosure_RoundTrip(t *testing.T) {
 	// Voluntary closure (distinct from cancellation) — the shipment
 	// happened, it's just no longer in transit.
 	err = sharedPool.RunScoped(ctx, fx.Principal.OrganisationID, func(ctx context.Context) error {
-		return ewaybillSvc.Close(ctx, ewbRec.ID, domain.ClosedByTransporter)
+		return ewaybillSvc.Close(ctx, fx.Principal.OrganisationID, ewbRec.ID, domain.ClosedByTransporter)
 	})
 	if err != nil {
 		t.Fatalf("Close: %v", err)
@@ -315,7 +315,7 @@ func TestEwaybill_ShipToGSTINAndVoluntaryClosure_RoundTrip(t *testing.T) {
 	var closed *domain.Record
 	err = sharedPool.RunScoped(ctx, fx.Principal.OrganisationID, func(ctx context.Context) error {
 		var getErr error
-		closed, getErr = ewaybillRecordRepoGet(ctx, doc.ID)
+		closed, getErr = ewaybillRecordRepoGet(ctx, fx.Principal.OrganisationID, doc.ID)
 		return getErr
 	})
 	if err != nil {
@@ -386,7 +386,7 @@ func recordFor(t *testing.T, ctx context.Context, _ *einvoiceapp.Service, orgID,
 	return rec, err
 }
 
-func ewaybillRecordRepoGet(ctx context.Context, salesDocumentID uuid.UUID) (*domain.Record, error) {
+func ewaybillRecordRepoGet(ctx context.Context, orgID, salesDocumentID uuid.UUID) (*domain.Record, error) {
 	repo := ewaybillpg.NewRecordRepo(sharedPool)
-	return repo.GetBySalesDocumentID(ctx, salesDocumentID)
+	return repo.GetBySalesDocumentID(ctx, orgID, salesDocumentID)
 }

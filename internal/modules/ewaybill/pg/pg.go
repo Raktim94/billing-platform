@@ -63,9 +63,9 @@ func scanRecord(row pgx.Row) (*domain.Record, error) {
 	return &r, nil
 }
 
-func (repo *RecordRepo) GetBySalesDocumentID(ctx context.Context, salesDocumentID uuid.UUID) (*domain.Record, error) {
-	row := repo.pool.Q(ctx).QueryRow(ctx, `SELECT `+selectCols+` FROM ewaybill_records WHERE sales_document_id = $1
-		ORDER BY created_at DESC LIMIT 1`, salesDocumentID)
+func (repo *RecordRepo) GetBySalesDocumentID(ctx context.Context, orgID, salesDocumentID uuid.UUID) (*domain.Record, error) {
+	row := repo.pool.Q(ctx).QueryRow(ctx, `SELECT `+selectCols+` FROM ewaybill_records WHERE organisation_id = $1 AND sales_document_id = $2
+		ORDER BY created_at DESC LIMIT 1`, orgID, salesDocumentID)
 	r, err := scanRecord(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -94,7 +94,7 @@ func (repo *RecordRepo) Create(ctx context.Context, r *domain.Record) error {
 	return nil
 }
 
-func (repo *RecordRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.Status, f domain.UpdateFields) error {
+func (repo *RecordRepo) UpdateStatus(ctx context.Context, orgID, id uuid.UUID, status domain.Status, f domain.UpdateFields) error {
 	var closedByRole *string
 	if f.ClosedByRole != nil {
 		s := string(*f.ClosedByRole)
@@ -124,11 +124,11 @@ func (repo *RecordRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status d
 			prepared_file_name = COALESCE($16, prepared_file_name),
 			prepared_at = COALESCE($17, prepared_at),
 			updated_at = now()
-		WHERE id = $1`
+		WHERE id = $1 AND organisation_id = $18`
 	n, err := repo.pool.Q(ctx).Exec(ctx, q, id, string(status),
 		f.EWBNumber, f.ValidFrom, f.ValidUntil, f.ShipToGSTIN, f.ClosedAt, closedByRole,
 		f.ErrorCode, f.ErrorMessage, f.CorrelationID, f.CancelledAt, f.CancelReason,
-		source, f.CanonicalSnapshot, f.PreparedFileName, f.PreparedAt)
+		source, f.CanonicalSnapshot, f.PreparedFileName, f.PreparedAt, orgID)
 	if err != nil {
 		return fmt.Errorf("ewaybill: updating record status: %w", err)
 	}
@@ -138,13 +138,13 @@ func (repo *RecordRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status d
 	return nil
 }
 
-func (repo *RecordRepo) AppendPartBHistory(ctx context.Context, id uuid.UUID, entry domain.PartBUpdate) error {
+func (repo *RecordRepo) AppendPartBHistory(ctx context.Context, orgID, id uuid.UUID, entry domain.PartBUpdate) error {
 	body, err := json.Marshal(entry)
 	if err != nil {
 		return fmt.Errorf("ewaybill: marshaling part-B entry: %w", err)
 	}
-	const q = `UPDATE ewaybill_records SET part_b_history = part_b_history || $2::jsonb, updated_at = now() WHERE id = $1`
-	n, err := repo.pool.Q(ctx).Exec(ctx, q, id, body)
+	const q = `UPDATE ewaybill_records SET part_b_history = part_b_history || $2::jsonb, updated_at = now() WHERE id = $1 AND organisation_id = $3`
+	n, err := repo.pool.Q(ctx).Exec(ctx, q, id, body, orgID)
 	if err != nil {
 		return fmt.Errorf("ewaybill: appending part-B history: %w", err)
 	}
