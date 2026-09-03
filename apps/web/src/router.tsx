@@ -7,6 +7,14 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { BillingPage } from "./pages/sales/BillingPage";
 import { SalesDetailPage } from "./pages/sales/SalesDetailPage";
 import { SalesListPage } from "./pages/sales/SalesListPage";
+import { PurchasesPage } from "./pages/purchases/PurchasesPage";
+import { InventoryPage } from "./pages/inventory/InventoryPage";
+import { ContactsPage } from "./pages/contacts/ContactsPage";
+import { CataloguePage } from "./pages/catalogue/CataloguePage";
+import { AccountingPage } from "./pages/accounting/AccountingPage";
+import { GstPage } from "./pages/gst/GstPage";
+import { ReportsPage } from "./pages/reports/ReportsPage";
+import { SettingsPage } from "./pages/settings/SettingsPage";
 import { readSessionHint } from "./auth/session";
 
 /**
@@ -113,14 +121,24 @@ const salesDetailRoute = createRoute({
   }),
 });
 
-const purchasesRoute = placeholderRoute("/purchases", "Purchases");
-const inventoryRoute = placeholderRoute("/inventory", "Inventory");
-const contactsRoute = placeholderRoute("/contacts", "Contacts");
-const accountingRoute = placeholderRoute("/accounting", "Accounting");
-const gstRoute = placeholderRoute("/gst", "GST / Tax");
-const reportsRoute = placeholderRoute("/reports", "Reports");
+function realRoute<TPath extends string>(path: TPath, component: () => React.ReactElement) {
+  return createRoute({
+    getParentRoute: () => rootRoute,
+    path,
+    beforeLoad: requireAuth,
+    component: withShell(component),
+  });
+}
+
+const purchasesRoute = realRoute("/purchases", PurchasesPage);
+const inventoryRoute = realRoute("/inventory", InventoryPage);
+const catalogueRoute = realRoute("/catalogue", CataloguePage);
+const contactsRoute = realRoute("/contacts", ContactsPage);
+const accountingRoute = realRoute("/accounting", AccountingPage);
+const gstRoute = realRoute("/gst", GstPage);
+const reportsRoute = realRoute("/reports", ReportsPage);
 const integrationsRoute = placeholderRoute("/integrations", "Integrations");
-const settingsRoute = placeholderRoute("/settings", "Settings");
+const settingsRoute = realRoute("/settings", SettingsPage);
 
 const notFoundRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -137,6 +155,7 @@ const routeTree = rootRoute.addChildren([
   salesDetailRoute,
   purchasesRoute,
   inventoryRoute,
+  catalogueRoute,
   contactsRoute,
   accountingRoute,
   gstRoute,

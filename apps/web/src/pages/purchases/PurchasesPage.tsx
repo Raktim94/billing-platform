@@ -1,0 +1,324 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import ui from "../../components/ui.module.css";
+import { api, ApiError } from "../../lib/api-client";
+import { formatMoney } from "../../lib/money";
+import type { Party } from "../../lib/partyTypes";
+import { useOrgContext } from "../../lib/useOrgContext";
+import layout from "../DashboardPage.module.css";
+
+interface PurchaseDocument {
+  ID: string;
+  DocumentNumber: string;
+  Status: "DRAFT" | "FINALIZED" | "CANCELLED";
+  DocumentType: string;
+  DocumentDate: string;
+  SupplierPartyID: string;
+}
+interface PurchaseLine {
+  ID: string;
+  LineNumber: number;
+  Quantity: string;
+  UnitPrice: { amount: string; currency: string };
+  LineTotal: { amount: string; currency: string };
+}
+interface Product {
+  ID: string;
+  Name: string;
+  BaseUOMID: string;
+}
+interface ProductVariant {
+  ID: string;
+  SKUCode: string;
+}
+
+export function PurchasesPage() {
+  const queryClient = useQueryClient();
+  const org = useOrgContext();
+  const [creating, setCreating] = useState(false);
+  const [activeDocId, setActiveDocId] = useState<string | null>(null);
+  const [supplierQuery, setSupplierQuery] = useState("");
+  const [supplier, setSupplier] = useState<Party | null>(null);
+  const [productQuery, setProductQuery] = useState("");
+  const [productResults, setProductResults] = useState<Product[]>([]);
+  const [qty, setQty] = useState("1");
+  const [price, setPrice] = useState("0");
+
+  const documents = useQuery({
+    queryKey: ["purchase-documents"],
+    queryFn: () => api.get<{ documents: PurchaseDocument[] }>("/purchases/documents"),
+  });
+
+  const activeDoc = useQuery({
+    queryKey: ["purchase-document", activeDocId],
+    queryFn: () => api.get<{ document: PurchaseDocument; lines: PurchaseLine[] }>(`/purchases/documents/${activeDocId}`),
+    enabled: !!activeDocId,
+  });
+
+  const supplierSearch = useQuery({
+    queryKey: ["supplier-search", supplierQuery],
+    queryFn: () => api.get<{ parties: Party[] }>(`/contacts/parties?q=${encodeURIComponent(supplierQuery)}`),
+    enabled: supplierQuery.length >= 2,
+  });
+
+  const startPurchase = useMutation({
+    mutationFn: () => {
+      if (!supplier || !org.branch || !org.warehouse) throw new Error("Missing organisation context.");
+      return api.post<PurchaseDocument>("/purchases/documents", {
+        branch_id: org.branch.ID,
+        warehouse_id: org.warehouse.ID,
+        supplier_party_id: supplier.ID,
+        document_type: "PURCHASE_INVOICE",
+        currency_code: org.organisation?.DefaultCurrencyCode || "INR",
+        notes: "",
+      });
+    },
+    onSuccess: (d) => {
+      setActiveDocId(d.ID);
+      queryClient.invalidateQueries({ queryKey: ["purchase-documents"] });
+    },
+  });
+
+  async function searchProducts(q: string) {
+    setProductQuery(q);
+    if (q.trim().length < 2) {
+      setProductResults([]);
+      return;
+    }
+    const res = await api.get<{ products: Product[] }>(`/catalogue/products?q=${encodeURIComponent(q)}`);
+    setProductResults(res.products);
+  }
+
+  const addLine = useMutation({
+    mutationFn: async (product: Product) => {
+      const variants = await api.get<{ variants: ProductVariant[] }>(`/catalogue/products/${product.ID}/variants`);
+      const variant = variants.variants[0];
+      if (!variant) throw new Error("This product has no variant yet.");
+      return api.post(`/purchases/documents/${activeDocId}/lines`, {
+        product_variant_id: variant.ID,
+        unit_id: product.BaseUOMID,
+        quantity: qty,
+        unit_price: price,
+        batch_code: "",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-document", activeDocId] });
+      setProductQuery("");
+      setProductResults([]);
+      setQty("1");
+      setPrice("0");
+    },
+  });
+
+  const finalize = useMutation({
+    mutationFn: () => api.post(`/purchases/documents/${activeDocId}/finalize`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-document", activeDocId] });
+      queryClient.invalidateQueries({ queryKey: ["purchase-documents"] });
+    },
+  });
+
+  if (creating || activeDocId) {
+    const lines = activeDoc.data?.lines ?? [];
+    const finalized = activeDoc.data?.document.Status === "FINALIZED";
+    return (
+      <div className={layout.page}>
+        <div className={layout.heading}>
+          <div>
+            <h1>New purchase</h1>
+            <p className={layout.subtitle}>Record what you bought from a supplier.</p>
+          </div>
+          <button
+            type="button"
+            className={ui.btnSecondary}
+            onClick={() => {
+              setCreating(false);
+              setActiveDocId(null);
+              setSupplier(null);
+            }}
+          >
+            Back to list
+          </button>
+        </div>
+
+        {!activeDocId ? (
+          <div className={layout.panel}>
+            <div className={ui.field} style={{ maxWidth: 360, position: "relative" }}>
+              <label htmlFor="supplier-search">Supplier</label>
+              {supplier ? (
+                <div>
+                  <strong>{supplier.LegalName}</strong>{" "}
+                  <button type="button" className={ui.btnSecondary} onClick={() => setSupplier(null)}>
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    id="supplier-search"
+                    className={ui.input}
+                    value={supplierQuery}
+                    onChange={(e) => setSupplierQuery(e.target.value)}
+                    placeholder="Search supplier…"
+                  />
+                  {supplierSearch.data?.parties.length ? (
+                    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                      {supplierSearch.data.parties.map((p) => (
+                        <li key={p.ID}>
+                          <button type="button" className={ui.btnSecondary} style={{ margin: "4px 4px 0 0" }} onClick={() => setSupplier(p)}>
+                            {p.LegalName}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </>
+              )}
+            </div>
+            <div className={ui.formActions} style={{ marginTop: 12 }}>
+              <button type="button" className={ui.btnPrimary} disabled={!supplier || startPurchase.isPending} onClick={() => startPurchase.mutate()}>
+                Start purchase
+              </button>
+            </div>
+            {startPurchase.isError ? (
+              <p role="alert" style={{ color: "var(--color-negative)" }}>
+                {startPurchase.error instanceof ApiError ? startPurchase.error.message : "Could not start this purchase."}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            {!finalized ? (
+              <div className={layout.panel}>
+                <div className={ui.formGrid}>
+                  <div className={ui.field} style={{ gridColumn: "span 2" }}>
+                    <label htmlFor="purchase-product-search">Product</label>
+                    <input
+                      id="purchase-product-search"
+                      className={ui.input}
+                      value={productQuery}
+                      onChange={(e) => void searchProducts(e.target.value)}
+                    />
+                  </div>
+                  <div className={ui.field}>
+                    <label htmlFor="purchase-qty">Quantity</label>
+                    <input id="purchase-qty" className={ui.input} value={qty} onChange={(e) => setQty(e.target.value)} />
+                  </div>
+                  <div className={ui.field}>
+                    <label htmlFor="purchase-price">Unit cost</label>
+                    <input id="purchase-price" className={ui.input} value={price} onChange={(e) => setPrice(e.target.value)} />
+                  </div>
+                </div>
+                {productResults.length > 0 ? (
+                  <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+                    {productResults.map((p) => (
+                      <li key={p.ID}>
+                        <button type="button" className={ui.btnPrimary} style={{ margin: "4px 4px 0 0" }} onClick={() => addLine.mutate(p)}>
+                          Add {p.Name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className={layout.panel}>
+              <h2>Items</h2>
+              {lines.length === 0 ? (
+                <p className={layout.emptyState}>No items yet.</p>
+              ) : (
+                <div className={ui.tableScroll}>
+                  <table className={ui.table}>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Qty</th>
+                        <th>Cost</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((l) => (
+                        <tr key={l.ID}>
+                          <td className="num">{l.LineNumber}</td>
+                          <td className="num">{l.Quantity}</td>
+                          <td className="num">{formatMoney(l.UnitPrice)}</td>
+                          <td className="num">{formatMoney(l.LineTotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {!finalized ? (
+                <div className={ui.formActions} style={{ marginTop: 12 }}>
+                  <button type="button" className={ui.btnPrimary} disabled={lines.length === 0 || finalize.isPending} onClick={() => finalize.mutate()}>
+                    Finalize purchase
+                  </button>
+                </div>
+              ) : (
+                <p className={ui.badge} data-tone="positive" style={{ marginTop: 12 }}>
+                  Finalized
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={layout.page}>
+      <div className={layout.heading}>
+        <div>
+          <h1>Purchases</h1>
+          <p className={layout.subtitle}>What you've bought from suppliers.</p>
+        </div>
+        <button type="button" className={ui.btnPrimary} onClick={() => setCreating(true)}>
+          + New purchase
+        </button>
+      </div>
+      <div className={layout.panel}>
+        {documents.isError ? (
+          <p className={layout.errorState} role="alert">
+            Couldn't load purchases.
+          </p>
+        ) : documents.isPending ? (
+          <div className={layout.skeleton} style={{ height: 200 }} aria-hidden="true" />
+        ) : documents.data.documents.length === 0 ? (
+          <p className={layout.emptyState}>No purchases yet.</p>
+        ) : (
+          <div className={ui.tableScroll}>
+            <table className={ui.table}>
+              <thead>
+                <tr>
+                  <th>Number</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {documents.data.documents.map((d) => (
+                  <tr key={d.ID} onClick={() => setActiveDocId(d.ID)} style={{ cursor: "pointer" }}>
+                    <td>{d.DocumentNumber || "(draft)"}</td>
+                    <td>{d.DocumentType}</td>
+                    <td>
+                      <span className={ui.badge} data-tone={d.Status === "FINALIZED" ? "positive" : "warning"}>
+                        {d.Status}
+                      </span>
+                    </td>
+                    <td>{new Date(d.DocumentDate).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
