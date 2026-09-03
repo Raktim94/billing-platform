@@ -76,6 +76,10 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, httpx.NewBadRequest("PASSWORD_MISMATCH", "New password and confirmation do not match."))
 	case errors.Is(err, domain.ErrSessionInvalid):
 		httpx.WriteError(w, r, httpx.NewUnauthorized("SESSION_INVALID", "Your session has expired. Please sign in again."))
+	case errors.Is(err, domain.ErrEmptyScopeList):
+		httpx.WriteError(w, r, httpx.NewBadRequest("SCOPES_REQUIRED", "An API key requires at least one explicit scope."))
+	case errors.Is(err, domain.ErrUnknownScope):
+		httpx.WriteError(w, r, httpx.NewBadRequest("UNKNOWN_SCOPE", "One or more requested scopes are not recognized."))
 	default:
 		var forbidden *permissions.ErrForbidden
 		if errors.As(err, &forbidden) {
@@ -353,9 +357,10 @@ func (h *Handlers) clearSessionCookie(w http.ResponseWriter) {
 }
 
 func clientIP(r *http.Request) string {
-	// chimiddleware.RealIP (mounted in httpx.NewRouter) already rewrites
-	// r.RemoteAddr from X-Forwarded-For/X-Real-IP when present, so
-	// RemoteAddr is trusted here.
+	// internal/platform/http/router.go deliberately does NOT mount
+	// chi/middleware.RealIP (client-spoofable via X-Forwarded-For/
+	// X-Real-IP with no trusted-proxy allowlist) — RemoteAddr is the raw
+	// TCP peer address, the one thing here that isn't attacker-controlled.
 	host := r.RemoteAddr
 	for i := len(host) - 1; i >= 0; i-- {
 		if host[i] == ':' {

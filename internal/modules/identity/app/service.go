@@ -37,6 +37,8 @@ type Service struct {
 	passwordResets domain.PasswordResetRepository
 	mfa            domain.MFARepository
 	roles          domain.RoleRepository
+	apiKeys        domain.APIKeyRepository
+	permissions    *permissions.Checker
 	orgs           OrganisationProvisioner
 	hasher         *crypto.PasswordHasher
 	aead           *crypto.AEAD
@@ -53,6 +55,8 @@ func NewService(
 	passwordResets domain.PasswordResetRepository,
 	mfa domain.MFARepository,
 	roles domain.RoleRepository,
+	apiKeys domain.APIKeyRepository,
+	checker *permissions.Checker,
 	orgs OrganisationProvisioner,
 	hasher *crypto.PasswordHasher,
 	aead *crypto.AEAD,
@@ -66,6 +70,8 @@ func NewService(
 		passwordResets: passwordResets,
 		mfa:            mfa,
 		roles:          roles,
+		apiKeys:        apiKeys,
+		permissions:    checker,
 		orgs:           orgs,
 		hasher:         hasher,
 		aead:           aead,

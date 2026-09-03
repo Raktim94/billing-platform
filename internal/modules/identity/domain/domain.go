@@ -75,6 +75,50 @@ type MFASecret struct {
 	Enabled         bool
 }
 
+// APIScope is one of brief §36's coarse, fixed-vocabulary API key scopes.
+// See internal/platform/permissions/apikeyscope.go for how a scope
+// expands into the RBAC permission codes it actually authorizes.
+type APIScope string
+
+const (
+	ScopeProductsRead   APIScope = "products:read"
+	ScopeInventoryRead  APIScope = "inventory:read"
+	ScopeCustomersRead  APIScope = "customers:read"
+	ScopeCustomersWrite APIScope = "customers:write"
+	ScopeInvoicesRead   APIScope = "invoices:read"
+	ScopeInvoicesWrite  APIScope = "invoices:write"
+	ScopeReportsRead    APIScope = "reports:read"
+)
+
+// ValidScopes is the complete, closed vocabulary — CreateAPIKey rejects
+// anything not in this set, and the api_keys.scopes column's values are
+// drawn only from here (enforced in Go, not a DB CHECK, since text[]
+// element-level CHECKs are awkward in Postgres; ValidateScopes is called
+// on every write path, not just the HTTP layer, so this isn't just a UI
+// nicety).
+var ValidScopes = map[APIScope]bool{
+	ScopeProductsRead: true, ScopeInventoryRead: true,
+	ScopeCustomersRead: true, ScopeCustomersWrite: true,
+	ScopeInvoicesRead: true, ScopeInvoicesWrite: true,
+	ScopeReportsRead: true,
+}
+
+type APIKey struct {
+	ID             uuid.UUID
+	OrganisationID uuid.UUID
+	UserID         uuid.UUID
+	Name           string
+	KeyPrefix      string
+	KeyHash        string
+	Scopes         []APIScope
+	ExpiresAt      *time.Time
+	AllowedIP      *string
+	LastUsedAt     *time.Time
+	RevokedAt      *time.Time
+	CreatedAt      time.Time
+	CreatedBy      uuid.UUID
+}
+
 // --- Repository interfaces (implemented in internal/modules/identity/pg) ---
 
 type UserRepository interface {
@@ -114,6 +158,17 @@ type MFARepository interface {
 	// SELECT-then-UPDATE race would let the same recovery code be used
 	// twice by concurrent requests).
 	ConsumeRecoveryCode(ctx context.Context, userID uuid.UUID, codeHash string, at time.Time) (bool, error)
+}
+
+// APIKeyRepository. GetByHash, like SessionRepository.GetByTokenHash, is
+// deliberately called against an unscoped transaction — see
+// migrations/0025_api_keys.up.sql.
+type APIKeyRepository interface {
+	Create(ctx context.Context, k *APIKey) error
+	GetByHash(ctx context.Context, keyHash string) (*APIKey, error)
+	Touch(ctx context.Context, id uuid.UUID, at time.Time) error
+	Revoke(ctx context.Context, id uuid.UUID, at time.Time) error
+	ListActiveForOrganisation(ctx context.Context, organisationID uuid.UUID) ([]*APIKey, error)
 }
 
 // RoleRepository is the minimal slice of the RBAC catalog identity's

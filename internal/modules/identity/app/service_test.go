@@ -65,7 +65,7 @@ func newTestFixture(t *testing.T, sessionPolicy SessionPolicy) *testFixture {
 
 	svc := NewService(
 		fakeRunner{},
-		users, sess, resets, mfa, fakeRoleRepo{},
+		users, sess, resets, mfa, fakeRoleRepo{}, fakeAPIKeyRepo{}, nil,
 		fakeOrgProvisioner{result: orgapp.ProvisionResult{
 			OrganisationID: uuid.New(), LegalEntityID: uuid.New(), BranchID: uuid.New(), WarehouseID: uuid.New(),
 		}},

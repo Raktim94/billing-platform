@@ -29,6 +29,8 @@ import (
 	gstindiapg "billing-platform/internal/modules/gstindia/pg"
 	inventoryapp "billing-platform/internal/modules/inventory/app"
 	inventorypg "billing-platform/internal/modules/inventory/pg"
+	notificationsapp "billing-platform/internal/modules/notifications/app"
+	notificationspg "billing-platform/internal/modules/notifications/pg"
 	orgapp "billing-platform/internal/modules/organisation/app"
 	orgpg "billing-platform/internal/modules/organisation/pg"
 	pricingapp "billing-platform/internal/modules/pricing/app"
@@ -37,6 +39,8 @@ import (
 	salespg "billing-platform/internal/modules/sales/pg"
 	taxationapp "billing-platform/internal/modules/taxation/app"
 	taxationpg "billing-platform/internal/modules/taxation/pg"
+	webhooksapp "billing-platform/internal/modules/webhooks/app"
+	webhookspg "billing-platform/internal/modules/webhooks/pg"
 	"billing-platform/internal/platform/audit"
 	"billing-platform/internal/platform/config"
 	"billing-platform/internal/platform/database"
@@ -104,10 +108,33 @@ func run() error {
 	provider, providerName := buildEInvoiceProvider(logger)
 
 	einvoiceSvc := einvoiceapp.NewService(einvoicepg.NewRecordRepo(pool), provider, providerName,
-		salesSvc, taxationSvc, orgSvc, contactsSvc)
+		salesSvc, taxationSvc, orgSvc, contactsSvc, outboxStore)
+
+	webhooksSvc := webhooksapp.NewService(pool, webhookspg.NewEndpointRepo(pool), webhookspg.NewDeliveryLogRepo(pool),
+		outboxStore, permissionsChecker, auditRecorder)
+	// No real EmailProvider/SMSProvider/WhatsAppProvider configured here
+	// either (apps/server/main.go's doc comment explains why) — this
+	// worker still correctly drains queued sends into a documented
+	// per-channel permanent failure rather than silently dropping them.
+	notificationsSvc := notificationsapp.NewService(pool, notificationspg.NewShareLinkRepo(pool), outboxStore,
+		permissionsChecker, auditRecorder, nil, nil, nil)
 
 	poller := outbox.NewPoller(pool, outboxStore, logger)
 	poller.Register(einvoiceapp.EventTypeGenerate, einvoiceSvc.Handler())
+	// Webhook fan-out (docs/adr/0005): one handler per brief §38 source
+	// event this codebase actually enqueues today (sales' "invoice.finalized"
+	// and einvoice's "einvoice.generated"/"einvoice.failed" — see those
+	// modules' Stage 9 additions). Registering a handler for an event type
+	// nothing ever enqueues is harmless (it would simply never be
+	// claimed), but only these three are wired end-to-end and verified;
+	// invoice.created/cancelled, payment.*, stock.*, customer.created,
+	// ewaybill.* remain unwired producer-side, documented in docs/TODO.md
+	// rather than silently implied as done.
+	poller.Register("invoice.finalized", webhooksSvc.HandlerForSourceEvent("invoice.finalized"))
+	poller.Register("einvoice.generated", webhooksSvc.HandlerForSourceEvent("einvoice.generated"))
+	poller.Register("einvoice.failed", webhooksSvc.HandlerForSourceEvent("einvoice.failed"))
+	poller.Register(webhooksapp.EventTypeDelivery, webhooksSvc.DeliverHandler())
+	poller.Register(notificationsapp.EventTypeSend, notificationsSvc.Handler())
 
 	logger.Info("worker started", "einvoice_provider", providerName)
 	poller.Run(ctx, 5*time.Second)

@@ -15,6 +15,7 @@ import (
 	orgapp "billing-platform/internal/modules/organisation/app"
 	"billing-platform/internal/platform/audit"
 	appcrypto "billing-platform/internal/platform/crypto"
+	"billing-platform/internal/platform/permissions"
 )
 
 func newTestIdentityService(t *testing.T) (*identityapp.Service, *orgapp.Service) {
@@ -41,6 +42,8 @@ func newTestIdentityService(t *testing.T) (*identityapp.Service, *orgapp.Service
 		identitypg.NewPasswordResetRepo(sharedPool),
 		identitypg.NewMFARepo(sharedPool),
 		identitypg.NewRoleRepo(sharedPool),
+		identitypg.NewAPIKeyRepo(sharedPool),
+		permissions.NewChecker(permissions.NewPGStore(sharedPool), sharedPool),
 		orgSvc,
 		hasher, aead,
 		audit.NewPGRecorder(sharedPool),

@@ -220,6 +220,18 @@ func (fakeRoleRepo) AssignUserRole(ctx context.Context, id, organisationID, user
 	return nil
 }
 
+type fakeAPIKeyRepo struct{}
+
+func (fakeAPIKeyRepo) Create(ctx context.Context, k *domain.APIKey) error { return nil }
+func (fakeAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (*domain.APIKey, error) {
+	return nil, domain.ErrNotFound
+}
+func (fakeAPIKeyRepo) Touch(ctx context.Context, id uuid.UUID, at time.Time) error  { return nil }
+func (fakeAPIKeyRepo) Revoke(ctx context.Context, id uuid.UUID, at time.Time) error { return nil }
+func (fakeAPIKeyRepo) ListActiveForOrganisation(ctx context.Context, organisationID uuid.UUID) ([]*domain.APIKey, error) {
+	return nil, nil
+}
+
 type fakeOrgProvisioner struct {
 	result orgapp.ProvisionResult
 }

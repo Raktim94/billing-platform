@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,7 +33,11 @@ type Service struct {
 	taxation     *taxationapp.Service
 	organisation *orgapp.Service
 	contacts     *contactsapp.Service
-	now          func() time.Time
+	// outbox is optional (nil in some existing test fixtures/callers built
+	// before Stage 9) — every enqueue call below is nil-guarded, exactly
+	// like sales.Service.outbox's existing nil guard.
+	outbox outbox.Writer
+	now    func() time.Time
 }
 
 func NewService(
@@ -43,11 +48,12 @@ func NewService(
 	taxationSvc *taxationapp.Service,
 	organisationSvc *orgapp.Service,
 	contactsSvc *contactsapp.Service,
+	outboxWriter outbox.Writer,
 ) *Service {
 	return &Service{
 		records: records, provider: provider, providerName: providerName,
 		sales: salesSvc, taxation: taxationSvc, organisation: organisationSvc, contacts: contactsSvc,
-		now: time.Now,
+		outbox: outboxWriter, now: time.Now,
 	}
 }
 
@@ -118,6 +124,7 @@ func (s *Service) GenerateForDocument(ctx context.Context, orgID, salesDocumentI
 	if err != nil {
 		msg := err.Error()
 		_ = s.records.UpdateStatus(ctx, existing.ID, domain.StatusFailedFinal, domain.UpdateFields{ErrorMessage: &msg})
+		s.enqueueWebhookEvent(ctx, orgID, "einvoice.failed", existing.ID, salesDocumentID, msg)
 		// A malformed/unresolvable request (e.g. supplier has no GSTIN
 		// configured) will never succeed on retry — permanent, not
 		// retryable.
@@ -147,9 +154,31 @@ func (s *Service) GenerateForDocument(ctx context.Context, orgID, salesDocumentI
 	irn, ack := resp.IRN, resp.AckNumber
 	ackDate := resp.AckDate
 	signedInvoice, signedQR := resp.SignedInvoice, resp.SignedQRCode
-	return s.records.UpdateStatus(ctx, existing.ID, domain.StatusGenerated, domain.UpdateFields{
+	if err := s.records.UpdateStatus(ctx, existing.ID, domain.StatusGenerated, domain.UpdateFields{
 		IRN: &irn, AckNumber: &ack, AckDate: &ackDate, SignedInvoice: &signedInvoice, SignedQRPayload: &signedQR,
-	})
+	}); err != nil {
+		return err
+	}
+	s.enqueueWebhookEvent(ctx, orgID, "einvoice.generated", existing.ID, salesDocumentID, irn)
+	return nil
+}
+
+// enqueueWebhookEvent fans a webhook-facing source event out via the
+// outbox (docs/adr/0005) — nil-guarded and best-effort by design: a
+// failure to queue the notification must never turn an otherwise-
+// successful (or already correctly-recorded-as-failed) e-Invoice outcome
+// into an error the outbox poller would retry. Retrying would re-run the
+// whole idempotent GenerateForDocument call pointlessly, since the real
+// work already finished either way. Logged, not silently swallowed.
+func (s *Service) enqueueWebhookEvent(ctx context.Context, orgID uuid.UUID, eventType string, recordID, salesDocumentID uuid.UUID, detail string) {
+	if s.outbox == nil {
+		return
+	}
+	idempotencyKey := "webhook-source:" + eventType + ":" + recordID.String()
+	payload := map[string]any{"einvoice_record_id": recordID, "sales_document_id": salesDocumentID, "detail": detail}
+	if err := s.outbox.Enqueue(ctx, orgID, eventType, idempotencyKey, payload); err != nil {
+		slog.WarnContext(ctx, "einvoice: failed to enqueue webhook source event", "event_type", eventType, "error", err)
+	}
 }
 
 // buildIRNRequest assembles the government-facing request from data three

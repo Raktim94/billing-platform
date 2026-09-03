@@ -38,6 +38,9 @@ import (
 	inventoryapp "billing-platform/internal/modules/inventory/app"
 	inventoryhttp "billing-platform/internal/modules/inventory/httpapi"
 	inventorypg "billing-platform/internal/modules/inventory/pg"
+	notificationsapp "billing-platform/internal/modules/notifications/app"
+	notificationshttp "billing-platform/internal/modules/notifications/httpapi"
+	notificationspg "billing-platform/internal/modules/notifications/pg"
 	orgapp "billing-platform/internal/modules/organisation/app"
 	orghttp "billing-platform/internal/modules/organisation/httpapi"
 	orgpg "billing-platform/internal/modules/organisation/pg"
@@ -55,6 +58,9 @@ import (
 	salespg "billing-platform/internal/modules/sales/pg"
 	taxationapp "billing-platform/internal/modules/taxation/app"
 	taxationpg "billing-platform/internal/modules/taxation/pg"
+	webhooksapp "billing-platform/internal/modules/webhooks/app"
+	webhookshttp "billing-platform/internal/modules/webhooks/httpapi"
+	webhookspg "billing-platform/internal/modules/webhooks/pg"
 	"billing-platform/internal/platform/audit"
 	"billing-platform/internal/platform/config"
 	appcrypto "billing-platform/internal/platform/crypto"
@@ -264,6 +270,8 @@ func run() error {
 		identitypg.NewPasswordResetRepo(pool),
 		identitypg.NewMFARepo(pool),
 		identitypg.NewRoleRepo(pool),
+		identitypg.NewAPIKeyRepo(pool),
+		permissionsChecker,
 		orgSvc,
 		hasher,
 		aead,
@@ -272,6 +280,29 @@ func run() error {
 			IdleTimeout:     cfg.Session.IdleTimeout,
 			AbsoluteTimeout: cfg.Session.AbsoluteTimeout,
 		},
+	)
+
+	webhooksSvc := webhooksapp.NewService(
+		pool,
+		webhookspg.NewEndpointRepo(pool),
+		webhookspg.NewDeliveryLogRepo(pool),
+		outboxStore,
+		permissionsChecker,
+		auditRecorder,
+	)
+
+	// No EmailProvider/SMSProvider/WhatsAppProvider is wired by default —
+	// none has real credentials in a fresh self-hosted install (brief §20
+	// explicitly forbids a WhatsApp Web-scraping stand-in). QueueSend
+	// correctly returns a permanent per-channel failure until an operator
+	// configures one; see internal/modules/notifications/app/service.go.
+	notificationsSvc := notificationsapp.NewService(
+		pool,
+		notificationspg.NewShareLinkRepo(pool),
+		outboxStore,
+		permissionsChecker,
+		auditRecorder,
+		nil, nil, nil,
 	)
 
 	router := httpx.NewRouter(httpx.RouterConfig{AllowedOrigins: cfg.Server.AllowedOrigins, Logger: logger})
@@ -287,9 +318,14 @@ func run() error {
 	router.Route("/api/v1", func(r chi.Router) {
 		identityHandlers := identityhttp.NewHandlers(identitySvc, cfg.Session.CookieName, cfg.Session.Secure)
 		identityHandlers.Mount(r, bootstrapEnabled)
+		// Share-link redemption is deliberately UNAUTHENTICATED (brief
+		// §21 — the whole point is a recipient with no session/API key);
+		// it does NOT go in the RequireAuthOrAPIKey group below.
+		notificationshttp.NewHandlers(notificationsSvc).MountPublic(r)
 
 		r.Group(func(r chi.Router) {
-			r.Use(identityhttp.RequireAuth(identitySvc, cfg.Session.CookieName))
+			r.Use(identityhttp.RequireAuthOrAPIKey(identitySvc, cfg.Session.CookieName))
+			identityHandlers.MountAPIKeys(r)
 			orghttp.NewHandlers(orgSvc).Mount(r)
 			cataloguehttp.NewHandlers(catalogueSvc).Mount(r)
 			contactshttp.NewHandlers(contactsSvc).Mount(r)
@@ -300,6 +336,8 @@ func run() error {
 			saleshttp.NewHandlers(salesSvc).Mount(r)
 			accountinghttp.NewHandlers(accountingSvc).Mount(r)
 			reportinghttp.NewHandlers(reportingSvc).Mount(r)
+			webhookshttp.NewHandlers(webhooksSvc).Mount(r)
+			notificationshttp.NewHandlers(notificationsSvc).Mount(r)
 		})
 	})
 

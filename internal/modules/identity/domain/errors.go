@@ -12,4 +12,7 @@ var (
 	ErrTokenInvalid            = errors.New("identity: token invalid, expired, or already used")
 	ErrRateLimited             = errors.New("identity: too many attempts, try again later")
 	ErrPasswordConfirmMismatch = errors.New("identity: new password and confirmation do not match")
+	ErrAPIKeyInvalid           = errors.New("identity: api key invalid, expired, or revoked")
+	ErrEmptyScopeList          = errors.New("identity: an api key must have at least one explicit scope")
+	ErrUnknownScope            = errors.New("identity: unrecognized api key scope")
 )

@@ -97,6 +97,17 @@ func NewChecker(store Store, runner database.Runner) *Checker {
 // matches a request naming a different branch, but an organisation-wide
 // grant (all three nil) matches any scope.
 func (c *Checker) Require(ctx context.Context, principal Principal, permissionCode string, scope Scope) error {
+	// An API-key-authenticated request carries an additional restriction
+	// on top of the underlying user's RBAC grants (checked below) — a key
+	// can never exercise more than its own declared scopes allow, even if
+	// its owning user's role grants more. A session-authenticated request
+	// carries no restriction here at all (Require behaves exactly as
+	// before this existed), which is the "Principal shouldn't care which
+	// auth method produced it" property docs/architecture.md §11 asks for.
+	if restricted, ok := apiKeyScopeFromContext(ctx); ok && !restricted[permissionCode] {
+		return fmt.Errorf("permissions: user %s: %w", principal.UserID, &ErrForbidden{PermissionCode: permissionCode})
+	}
+
 	var grants []Grant
 	err := c.runner.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
 		var err error

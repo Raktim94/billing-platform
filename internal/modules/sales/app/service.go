@@ -510,6 +510,19 @@ func (s *Service) FinalizeDocument(ctx context.Context, principal permissions.Pr
 			}
 		}
 
+		// Webhook fan-out source event (Stage 9, docs/adr/0005). Sales has
+		// no idea webhooks exists — this is a bare outbox enqueue using
+		// brief §38's event catalog name; webhooks.Service registers its
+		// own handler against "invoice.finalized" in apps/worker.
+		if s.outbox != nil {
+			if err := s.outbox.Enqueue(ctx, principal.OrganisationID, "invoice.finalized",
+				"webhook-source:invoice.finalized:"+doc.ID.String(),
+				map[string]any{"document_id": doc.ID, "document_number": doc.DocumentNumber,
+					"document_type": string(doc.DocumentType)}); err != nil {
+				return fmt.Errorf("queuing invoice.finalized webhook event: %w", err)
+			}
+		}
+
 		return s.audit.Record(ctx, audit.Entry{
 			OrganisationID: principal.OrganisationID, ActorUserID: &principal.UserID, ActorType: audit.ActorUser,
 			Action: "sales_document.finalized", EntityType: "sales_document", EntityID: &documentID,

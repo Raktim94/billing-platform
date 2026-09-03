@@ -39,7 +39,7 @@ var errTransientOutage = errors.New("simulated e-Invoice sandbox outage")
 // newTestEinvoiceServices mirrors apps/worker/main.go's composition
 // exactly, but against sharedPool and with a mock EInvoiceProvider the
 // test can control (fail-on-demand) — never the real sandbox adapter.
-func newTestEinvoiceServices(t *testing.T) (*salesapp.Service, *einvoiceapp.Service, *ewaybillapp.Service, *mockprovider.Provider, *outbox.Poller, *outbox.PGStore) {
+func newTestEinvoiceServices(t *testing.T) (*salesapp.Service, *einvoiceapp.Service, *ewaybillapp.Service, *mockprovider.Provider, map[string]outbox.Handler, *outbox.PGStore) {
 	t.Helper()
 	checker := permissions.NewChecker(permissions.NewPGStore(sharedPool), sharedPool)
 	recorder := audit.NewPGRecorder(sharedPool)
@@ -69,29 +69,41 @@ func newTestEinvoiceServices(t *testing.T) (*salesapp.Service, *einvoiceapp.Serv
 	)
 
 	provider := mockprovider.New()
-	einvoiceSvc := einvoiceapp.NewService(einvoicepg.NewRecordRepo(sharedPool), provider, "mock", salesSvc, taxationSvc, orgSvc, contactsSvc)
+	einvoiceSvc := einvoiceapp.NewService(einvoicepg.NewRecordRepo(sharedPool), provider, "mock", salesSvc, taxationSvc, orgSvc, contactsSvc, outboxStore)
 	ewaybillSvc := ewaybillapp.NewService(ewaybillpg.NewRecordRepo(sharedPool), provider, salesSvc)
 
-	poller := outbox.NewPoller(sharedPool, outboxStore, nil)
-	poller.Register(einvoiceapp.EventTypeGenerate, einvoiceSvc.Handler())
+	// Handlers are processed via processNextForOrg/drainForOrg
+	// (tests/integration/outbox_helpers_test.go), NOT outbox.Poller —
+	// see that file's doc comment for why: outbox.Poller.ProcessOnce
+	// claims across ALL organisations with no test isolation, which a
+	// real worker needs but a test claiming its own known, freshly-created
+	// organisation's events does not. A no-op handler for
+	// "invoice.finalized" (Stage 9's addition to sales.FinalizeDocument,
+	// alongside this file's pre-existing "einvoice.generate" enqueue) is
+	// correct here — this file's tests only care about EventTypeGenerate's
+	// outcome, not webhook fan-out, but still need SOME handler registered
+	// so draining this test's own organisation doesn't error out on it.
+	handlers := map[string]outbox.Handler{
+		einvoiceapp.EventTypeGenerate: einvoiceSvc.Handler(),
+		"invoice.finalized":           func(context.Context, outbox.Event) error { return nil },
+	}
 
-	return salesSvc, einvoiceSvc, ewaybillSvc, provider, poller, outboxStore
+	return salesSvc, einvoiceSvc, ewaybillSvc, provider, handlers, outboxStore
 }
+
+// Event draining/processing for this file's tests goes through
+// processNextForOrg/drainForOrg (tests/integration/outbox_helpers_test.go)
+// — organisation-scoped via RLS, not outbox.Poller's cross-organisation
+// claim — see that file's doc comment for why.
 
 func TestEinvoice_FullFlow_FinalizeEnqueuesAndPollerGenerates(t *testing.T) {
 	ctx := context.Background()
-	salesSvc, einvoiceSvc, _, provider, poller, _ := newTestEinvoiceServices(t)
+	salesSvc, einvoiceSvc, _, provider, handlers, _ := newTestEinvoiceServices(t)
 	fx := setupSalesFixture(t, ctx)
 
 	doc := createAndFinalizeTaxInvoice(t, ctx, salesSvc, fx)
 
-	processed, err := poller.ProcessOnce(ctx)
-	if err != nil {
-		t.Fatalf("ProcessOnce: %v", err)
-	}
-	if !processed {
-		t.Fatal("expected ProcessOnce to claim and process the einvoice.generate event, but nothing was claimed")
-	}
+	drainForOrg(t, ctx, fx.Principal.OrganisationID, handlers, 2)
 
 	rec, err := recordFor(t, ctx, einvoiceSvc, fx.Principal.OrganisationID, doc.ID)
 	if err != nil {
@@ -110,7 +122,7 @@ func TestEinvoice_FullFlow_FinalizeEnqueuesAndPollerGenerates(t *testing.T) {
 
 func TestEinvoice_FailedRetryable_ThenRetrySucceeds(t *testing.T) {
 	ctx := context.Background()
-	salesSvc, einvoiceSvc, _, provider, poller, _ := newTestEinvoiceServices(t)
+	salesSvc, einvoiceSvc, _, provider, handlers, _ := newTestEinvoiceServices(t)
 	fx := setupSalesFixture(t, ctx)
 	doc := createAndFinalizeTaxInvoice(t, ctx, salesSvc, fx)
 
@@ -126,13 +138,7 @@ func TestEinvoice_FailedRetryable_ThenRetrySucceeds(t *testing.T) {
 	// poller.go: ProcessOnce captures the handler's error and calls
 	// MarkFailed, returning THAT result from the RunScoped closure, so a
 	// handler failure still commits the failure record).
-	processed, err := poller.ProcessOnce(ctx)
-	if err != nil {
-		t.Fatalf("ProcessOnce (first attempt): %v", err)
-	}
-	if !processed {
-		t.Fatal("expected the poller to claim and process the einvoice.generate event")
-	}
+	drainForOrg(t, ctx, fx.Principal.OrganisationID, handlers, 2)
 	rec, err := recordFor(t, ctx, einvoiceSvc, fx.Principal.OrganisationID, doc.ID)
 	if err != nil {
 		t.Fatalf("fetching record after failed attempt: %v", err)
@@ -147,14 +153,11 @@ func TestEinvoice_FailedRetryable_ThenRetrySucceeds(t *testing.T) {
 	forceOutboxRetryNow(t, ctx, fx.Principal.OrganisationID)
 
 	// Second attempt (the "retry"): the mock's one-shot failure has been
-	// consumed, so this succeeds.
-	processed, err = poller.ProcessOnce(ctx)
-	if err != nil {
-		t.Fatalf("ProcessOnce (retry): %v", err)
-	}
-	if !processed {
-		t.Fatal("expected the poller to re-claim the FAILED_RETRYABLE event on the second poll")
-	}
+	// consumed, so this succeeds. Only the einvoice.generate retry is
+	// due now — the sibling invoice.finalized event was already drained
+	// (marked DONE) in the first drainOutboxBatch call above, so n=1 is
+	// correct here, not 2.
+	drainForOrg(t, ctx, fx.Principal.OrganisationID, handlers, 1)
 	rec, err = recordFor(t, ctx, einvoiceSvc, fx.Principal.OrganisationID, doc.ID)
 	if err != nil {
 		t.Fatalf("fetching record after retry: %v", err)
@@ -173,19 +176,13 @@ func TestEinvoice_FailedRetryable_ThenRetrySucceeds(t *testing.T) {
 // already succeeded) must never call GenerateIRN a second time.
 func TestEinvoice_Idempotency_DoubleProcessingDoesNotDoubleSubmit(t *testing.T) {
 	ctx := context.Background()
-	salesSvc, einvoiceSvc, _, provider, poller, _ := newTestEinvoiceServices(t)
+	salesSvc, einvoiceSvc, _, provider, handlers, _ := newTestEinvoiceServices(t)
 	fx := setupSalesFixture(t, ctx)
 	doc := createAndFinalizeTaxInvoice(t, ctx, salesSvc, fx)
 
 	// First processing: the real production path (poller claims and runs
 	// the handler), reaching GENERATED.
-	processed, err := poller.ProcessOnce(ctx)
-	if err != nil {
-		t.Fatalf("ProcessOnce (first): %v", err)
-	}
-	if !processed {
-		t.Fatal("expected the poller to claim and process the einvoice.generate event")
-	}
+	drainForOrg(t, ctx, fx.Principal.OrganisationID, handlers, 2)
 	firstRec, err := recordFor(t, ctx, einvoiceSvc, fx.Principal.OrganisationID, doc.ID)
 	if err != nil {
 		t.Fatalf("fetching record after first call: %v", err)
@@ -225,7 +222,7 @@ func TestEinvoice_Idempotency_DoubleProcessingDoesNotDoubleSubmit(t *testing.T) 
 // only the e-Invoice record reflects the failure.
 func TestEinvoice_OutageDoesNotCorruptSale(t *testing.T) {
 	ctx := context.Background()
-	salesSvc, einvoiceSvc, _, provider, poller, _ := newTestEinvoiceServices(t)
+	salesSvc, einvoiceSvc, _, provider, handlers, _ := newTestEinvoiceServices(t)
 	fx := setupSalesFixture(t, ctx)
 
 	doc := createAndFinalizeTaxInvoice(t, ctx, salesSvc, fx)
@@ -234,9 +231,7 @@ func TestEinvoice_OutageDoesNotCorruptSale(t *testing.T) {
 	}
 
 	provider.FailNextGenerateIRN(errTransientOutage)
-	if _, err := poller.ProcessOnce(ctx); err != nil {
-		t.Fatalf("ProcessOnce (poller-level) unexpectedly errored: %v", err)
-	}
+	drainForOrg(t, ctx, fx.Principal.OrganisationID, handlers, 2)
 
 	refetched, _, err := salesSvc.GetDocument(ctx, fx.Principal, doc.ID)
 	if err != nil {
@@ -260,12 +255,10 @@ func TestEinvoice_OutageDoesNotCorruptSale(t *testing.T) {
 
 func TestEinvoice_RLS_BlocksCrossOrganisationRecordRead(t *testing.T) {
 	ctx := context.Background()
-	salesSvc, einvoiceSvc, _, _, poller, _ := newTestEinvoiceServices(t)
+	salesSvc, einvoiceSvc, _, _, handlers, _ := newTestEinvoiceServices(t)
 	fxA := setupSalesFixture(t, ctx)
 	docA := createAndFinalizeTaxInvoice(t, ctx, salesSvc, fxA)
-	if _, err := poller.ProcessOnce(ctx); err != nil {
-		t.Fatalf("ProcessOnce: %v", err)
-	}
+	drainForOrg(t, ctx, fxA.Principal.OrganisationID, handlers, 2)
 
 	fxB := setupSalesFixture(t, ctx)
 	_, err := recordFor(t, ctx, einvoiceSvc, fxB.Principal.OrganisationID, docA.ID)
@@ -276,12 +269,10 @@ func TestEinvoice_RLS_BlocksCrossOrganisationRecordRead(t *testing.T) {
 
 func TestEwaybill_ShipToGSTINAndVoluntaryClosure_RoundTrip(t *testing.T) {
 	ctx := context.Background()
-	salesSvc, einvoiceSvc, ewaybillSvc, _, poller, _ := newTestEinvoiceServices(t)
+	salesSvc, einvoiceSvc, ewaybillSvc, _, handlers, _ := newTestEinvoiceServices(t)
 	fx := setupSalesFixture(t, ctx)
 	doc := createAndFinalizeTaxInvoice(t, ctx, salesSvc, fx)
-	if _, err := poller.ProcessOnce(ctx); err != nil {
-		t.Fatalf("ProcessOnce (einvoice): %v", err)
-	}
+	drainForOrg(t, ctx, fx.Principal.OrganisationID, handlers, 2)
 	einvoiceRec, err := recordFor(t, ctx, einvoiceSvc, fx.Principal.OrganisationID, doc.ID)
 	if err != nil {
 		t.Fatalf("fetching einvoice record: %v", err)
