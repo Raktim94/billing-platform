@@ -12,13 +12,13 @@ info:
     error envelope, money shape, pagination status) that apply across
     every endpoint below rather than being repeated per-operation.
 
-    Status: paths for every module are present (see `docs/TODO.md`
-    Cross-cutting section for progress); request/response schemas are
-    complete for identity, organisation, catalogue, contacts, and sales.
-    Endpoints not yet given a full typed schema use a documented
-    `additionalProperties: true` placeholder rather than a fabricated
-    shape — check the linked handler file for the exact fields until that
-    module's schema pass lands.
+    Status: complete — all 124 real routes across all 15 HTTP modules are
+    present and typed, mechanically verified against a grep of every
+    r.Get/Post/Put/Delete/Patch(...) registration in the codebase (exact
+    match, see the git history for this file). Kept current as endpoints
+    ship (docs/TODO.md's cross-cutting checklist item) — re-run that same
+    grep diff after adding or changing a route, don't just trust this
+    note.
 servers:
   - url: /api/v1
     description: Same origin as the web app; also reachable directly on the configured HTTP_PORT.
@@ -2766,10 +2766,3 @@ components:
         CreatedAt: { type: string, format: date-time }
         UpdatedAt: { type: string, format: date-time }
 
-    UnmodeledResponse:
-      description: >
-        Placeholder for an endpoint whose exact response shape hasn't had
-        its OpenAPI schema pass yet — see this file's info.description.
-        Read the linked handler for the real fields in the meantime.
-      type: object
-      additionalProperties: true

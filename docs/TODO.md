@@ -168,11 +168,13 @@ fallback to free mode on failure. Full reasoning and constraints in
 - [ ] All Scenarios A–N passing end-to-end in one continuous run
 
 ## Cross-cutting (touched every stage, not a separate phase)
-- [ ] `docs/api.md`, `docs/database.md`, OpenAPI 3.1 spec kept current as endpoints ship
-- [ ] `CHANGELOG.md`, ADRs for every non-obvious decision
-- [ ] CI: gofmt/vet/staticcheck/govulncheck/unit/integration/API/E2E/docker build/compose config on every PR (brief §73)
+- [x] `docs/api.md`, `docs/database.md` (2026-09-03) — written from the actual migrations/handlers, not from architecture-doc intent; `docs/database.md` cross-checked against a `CREATE TABLE` grep across all 31 migrations (64 tables), `docs/api.md`'s module→base-path table verified against each module's real `Mount()`
+- [x] OpenAPI 3.1 spec (2026-09-03) — `api/openapi/openapi.yaml`, all 124 real routes across all 15 HTTP modules, mechanically verified complete via a grep-and-diff of every `r.Get/Post/Put/Delete/Patch(...)` registration against the spec's paths (exact match). Real bug caught in the process, not just documented: `export.WriteJSON` lost column order and dropped the `headers` field (Go map key sorting) — every `ReportTable`-based screen and the dashboard's sales trend chart would have broken or shown wrong columns the first time real data existed; fixed with a regression test. Keeping this current as endpoints change is still a live, ongoing obligation — this entry marks the spec as caught up as of this commit, not as permanently done
+- [x] `CHANGELOG.md` (2026-09-03) — derived from real git history, one entry per shipped stage
+- [ ] ADRs for every non-obvious decision — 5 exist (`docs/adr/`); not audited for full coverage against every non-obvious decision actually made
+- [x] CI workflow written (2026-09-03) — `.github/workflows/ci.yml`: gofmt/vet/staticcheck/govulncheck, unit tests, integration tests (Testcontainers), frontend typecheck/lint/build, docker build, compose config (brief §73). Syntactically validated (parses as valid YAML, job/step structure checked by hand against each real command); **not yet run for real** — this environment has no GitHub Actions runner, Docker, or Postgres to exercise it against. Confirm the first real PR run is green before trusting this checkbox fully
 
-## Open questions still owed by the user (see `docs/research.md`)
-- [ ] e-Invoice/e-Way Bill provider: real GSP/ASP account vs. NIC sandbox placeholder
-- [ ] First deployment target: CasaOS (debiancasa) vs. fresh VPS
-- [ ] Final product/branding name (repo stays `billing-platform` until then)
+## Open questions — answered 2026-09-03, see `docs/research.md`
+- [x] e-Invoice/e-Way Bill provider: **staying on the NIC sandbox** (user decision) — no real GSP/ASP account yet, matches how the whole project has been built and tested
+- [x] First deployment target: **fresh VPS** (user decision) — the plain `deploy/compose/` path is the one to harden/finish first; `deploy/casaos/` stays as-is, not the near-term priority
+- [ ] Final product/branding name (repo stays `billing-platform` until then) — still open
