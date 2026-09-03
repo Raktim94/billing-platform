@@ -46,8 +46,20 @@ type Item struct {
 	Quantity      decimal.Decimal `json:"quantity"`
 	UnitCode      string          `json:"unit_code"`
 	TaxableAmount decimal.Decimal `json:"taxable_amount"`
-	GSTRate       decimal.Decimal `json:"gst_rate"`
-	CessRate      decimal.Decimal `json:"cess_rate"`
+	// GSTRate is the COMBINED rate (e.g. 18 for 18% GST), kept for
+	// callers that only need a single display figure — same convention
+	// as gstindia.TaxRateMaster.GSTRate. CGSTRate/SGSTRate/IGSTRate below
+	// are the actual per-component split the government e-Way Bill
+	// portal's itemList schema requires (cgstRate/sgstRate/igstRate) —
+	// the portal mapper (portal/v1) needs the split, not the combined
+	// figure; a real bug this codebase shipped once already (see
+	// portal/v1/mapper.go's history) was collapsing this split into one
+	// field, which no real portal upload accepts.
+	GSTRate  decimal.Decimal `json:"gst_rate"`
+	CGSTRate decimal.Decimal `json:"cgst_rate"`
+	SGSTRate decimal.Decimal `json:"sgst_rate"`
+	IGSTRate decimal.Decimal `json:"igst_rate"`
+	CessRate decimal.Decimal `json:"cess_rate"`
 }
 
 type TaxTotals struct {

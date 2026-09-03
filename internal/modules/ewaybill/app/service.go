@@ -541,24 +541,33 @@ func (s *Service) buildCanonicalFromLiveData(ctx context.Context, orgID, salesDo
 	taxLineByRef := make(map[string]*taxdomainLineWithComponents, len(taxLines))
 	var totalCGST, totalSGST, totalIGST, totalCESS decimal.Decimal
 	for _, tl := range taxLines {
-		gstRate, cessRate := decimal.Zero, decimal.Zero
+		// cgstRate/sgstRate/igstRate are tracked SEPARATELY, not summed
+		// into one combined rate — the official e-Way Bill portal's
+		// itemList schema requires the per-component split (cgstRate/
+		// sgstRate/igstRate/cessRate), not a single "gst_rate" figure.
+		// gstRate (combined) is still derived below for callers that only
+		// want a display total.
+		var cgstRate, sgstRate, igstRate, cessRate decimal.Decimal
 		for _, c := range componentsByLine[tl.ID] {
 			switch c.ComponentType {
 			case "CESS":
 				cessRate = cessRate.Add(c.Rate)
 				totalCESS = totalCESS.Add(c.Amount.Decimal())
 			case "CGST":
-				gstRate = gstRate.Add(c.Rate)
+				cgstRate = cgstRate.Add(c.Rate)
 				totalCGST = totalCGST.Add(c.Amount.Decimal())
 			case "SGST", "UTGST":
-				gstRate = gstRate.Add(c.Rate)
+				sgstRate = sgstRate.Add(c.Rate)
 				totalSGST = totalSGST.Add(c.Amount.Decimal())
 			case "IGST":
-				gstRate = gstRate.Add(c.Rate)
+				igstRate = igstRate.Add(c.Rate)
 				totalIGST = totalIGST.Add(c.Amount.Decimal())
 			}
 		}
-		taxLineByRef[tl.LineRef] = &taxdomainLineWithComponents{line: tl, gstRate: gstRate, cessRate: cessRate}
+		gstRate := cgstRate.Add(sgstRate).Add(igstRate)
+		taxLineByRef[tl.LineRef] = &taxdomainLineWithComponents{
+			line: tl, gstRate: gstRate, cgstRate: cgstRate, sgstRate: sgstRate, igstRate: igstRate, cessRate: cessRate,
+		}
 	}
 
 	items := make([]canonical.Item, 0, len(lines))
@@ -570,7 +579,8 @@ func (s *Service) buildCanonicalFromLiveData(ctx context.Context, orgID, salesDo
 		}
 		items = append(items, canonical.Item{
 			LineRef: ref, HSNSACCode: l.HSNSACCode, Quantity: l.Quantity,
-			TaxableAmount: tl.line.TaxableAmount.Decimal(), GSTRate: tl.gstRate, CessRate: tl.cessRate,
+			TaxableAmount: tl.line.TaxableAmount.Decimal(), GSTRate: tl.gstRate,
+			CGSTRate: tl.cgstRate, SGSTRate: tl.sgstRate, IGSTRate: tl.igstRate, CessRate: tl.cessRate,
 		})
 	}
 
@@ -599,5 +609,8 @@ func (s *Service) buildCanonicalFromLiveData(ctx context.Context, orgID, salesDo
 type taxdomainLineWithComponents struct {
 	line     *taxdomain.TaxLine
 	gstRate  decimal.Decimal
+	cgstRate decimal.Decimal
+	sgstRate decimal.Decimal
+	igstRate decimal.Decimal
 	cessRate decimal.Decimal
 }

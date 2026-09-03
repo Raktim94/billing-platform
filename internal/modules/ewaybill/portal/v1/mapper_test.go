@@ -38,9 +38,15 @@ func TestPrepareUpload_ProducesNonEmptyValidJSON(t *testing.T) {
 		SalesDocumentID: uuid.Must(uuid.NewV7()), InvoiceNumber: "INV-1", InvoiceDate: time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC),
 		DocumentType: "INV", Supplier: canonical.Party{LegalName: "Acme", GSTIN: "27AAAAA0000A1Z5", StateCode: "27"},
 		Recipient: canonical.Party{LegalName: "Buyer", StateCode: "29"}, ShipTo: canonical.Party{StateCode: "29"},
-		Items:     []canonical.Item{{LineRef: "1", HSNSACCode: "998877", Quantity: decimal.NewFromInt(1), TaxableAmount: decimal.NewFromInt(1000), GSTRate: decimal.NewFromInt(18)}},
-		Tax:       canonical.TaxTotals{TaxableValue: decimal.NewFromInt(1000), IGST: decimal.NewFromInt(180), GrandTotal: decimal.NewFromInt(1180)},
-		Transport: canonical.Transport{VehicleNumber: "KA01AB1234", DistanceKM: decimal.NewFromInt(50)},
+		// DispatchFrom mirrors Supplier and Recipient has no GSTIN set,
+		// same as ShipTo — matching real usage (buildCanonicalFromLiveData
+		// always sets DispatchFrom: supplier), so transactionType resolves
+		// to "1" (Regular), not a spurious "3"/"2" from an unrealistic
+		// fixture.
+		DispatchFrom: canonical.Party{LegalName: "Acme", GSTIN: "27AAAAA0000A1Z5", StateCode: "27"},
+		Items:        []canonical.Item{{LineRef: "1", HSNSACCode: "998877", Quantity: decimal.NewFromInt(1), TaxableAmount: decimal.NewFromInt(1000), GSTRate: decimal.NewFromInt(18), IGSTRate: decimal.NewFromInt(18)}},
+		Tax:          canonical.TaxTotals{TaxableValue: decimal.NewFromInt(1000), IGST: decimal.NewFromInt(180), GrandTotal: decimal.NewFromInt(1180)},
+		Transport:    canonical.Transport{VehicleNumber: "KA01AB1234", DistanceKM: decimal.NewFromInt(50)},
 	}
 	file, err := m.PrepareUpload(context.Background(), bill)
 	if err != nil {
@@ -59,8 +65,53 @@ func TestPrepareUpload_ProducesNonEmptyValidJSON(t *testing.T) {
 	if err := json.Unmarshal(file.Content, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if decoded["doc_no"] != "INV-1" {
-		t.Fatalf("doc_no = %v, want INV-1", decoded["doc_no"])
+	if decoded["docNo"] != "INV-1" {
+		t.Fatalf("docNo = %v, want INV-1", decoded["docNo"])
+	}
+	if decoded["fromGstin"] != "27AAAAA0000A1Z5" {
+		t.Fatalf("fromGstin = %v, want the real field flat at root level, not nested under \"from\"", decoded["fromGstin"])
+	}
+	if decoded["transactionType"] != "1" {
+		t.Fatalf("transactionType = %v, want \"1\" (Regular — ShipTo/DispatchFrom match Recipient/Supplier in this fixture)", decoded["transactionType"])
+	}
+	if decoded["totInvValue"] != "1180.00" {
+		t.Fatalf("totInvValue = %v, want 1180.00", decoded["totInvValue"])
+	}
+	items, ok := decoded["itemList"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("itemList = %v, want exactly 1 item", decoded["itemList"])
+	}
+	item := items[0].(map[string]any)
+	if item["igstRate"] != "18.00" || item["cgstRate"] != "0.00" {
+		t.Fatalf("item rates = %+v, want the per-component split preserved (igstRate=18.00, cgstRate=0.00), not collapsed into one combined rate", item)
+	}
+}
+
+func TestPrepareUpload_TransactionType_DetectsBillToShipTo(t *testing.T) {
+	m := New()
+	bill := canonical.CanonicalEWayBill{
+		InvoiceNumber: "INV-2", InvoiceDate: time.Now(),
+		Supplier:  canonical.Party{GSTIN: "27AAAAA0000A1Z5", StateCode: "27"},
+		Recipient: canonical.Party{GSTIN: "29BBBBB0000B1Z5", StateCode: "29"},
+		// ShipTo has a DIFFERENT GSTIN than Recipient — a genuine
+		// bill-to/ship-to split, which must produce transactionType "2".
+		ShipTo:       canonical.Party{GSTIN: "07CCCCC0000C1Z5", StateCode: "07"},
+		DispatchFrom: canonical.Party{GSTIN: "27AAAAA0000A1Z5", StateCode: "27"},
+		Tax:          canonical.TaxTotals{GrandTotal: decimal.NewFromInt(1000)},
+	}
+	file, err := m.PrepareUpload(context.Background(), bill)
+	if err != nil {
+		t.Fatalf("PrepareUpload: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(file.Content, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded["transactionType"] != "2" {
+		t.Fatalf("transactionType = %v, want \"2\" (Bill To-Ship To)", decoded["transactionType"])
+	}
+	if decoded["shipToGSTIN"] != "07CCCCC0000C1Z5" {
+		t.Fatalf("shipToGSTIN = %v, want 07CCCCC0000C1Z5", decoded["shipToGSTIN"])
 	}
 }
 
