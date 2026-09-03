@@ -1189,6 +1189,362 @@ paths:
       responses:
         "200": { description: OK, content: { application/json: { schema: { type: object, properties: { tax_rates: { type: array, items: { $ref: "#/components/schemas/TaxRateMaster" } } } } } } }
 
+  # ============================================================
+  # SALES — quotation/proforma/order/challan/invoice/credit-debit-note/
+  # return/recurring, one document family (document_type-parameterized).
+  # Verified against internal/modules/sales/domain/domain.go and
+  # internal/modules/sales/app/lookup.go.
+  # ============================================================
+  /sales/documents:
+    get:
+      tags: [Sales]
+      summary: List sales documents, optionally filtered by document_type.
+      parameters:
+        - { name: document_type, in: query, schema: { $ref: "#/components/schemas/SalesDocumentType" } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { documents: { type: array, items: { $ref: "#/components/schemas/SalesDocument" } } } } } } }
+    post:
+      tags: [Sales]
+      summary: Create a sales document (DRAFT) — the billing counter's "Start sale" call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legal_entity_id, branch_id, warehouse_id, customer_party_id, document_type, place_of_supply_state_code, currency_code, base_currency_code, pricing_mode]
+              properties:
+                legal_entity_id: { type: string, format: uuid }
+                branch_id: { type: string, format: uuid }
+                warehouse_id: { type: string, format: uuid }
+                customer_party_id: { type: string, format: uuid }
+                document_type: { $ref: "#/components/schemas/SalesDocumentType" }
+                reference_document_id: { type: string, format: uuid, nullable: true, description: For a document created via convert, e.g. an invoice from a sales order. }
+                issue_date: { type: string, format: date-time, nullable: true }
+                due_date: { type: string, format: date-time, nullable: true }
+                supply_date: { type: string, format: date-time, nullable: true }
+                billing_address_id: { type: string, format: uuid, nullable: true }
+                shipping_address_id: { type: string, format: uuid, nullable: true }
+                customer_tax_registration_id: { type: string, format: uuid, nullable: true }
+                place_of_supply_state_code: { type: string }
+                salesperson_user_id: { type: string, format: uuid, nullable: true }
+                price_list_id: { type: string, format: uuid, nullable: true }
+                currency_code: { type: string }
+                base_currency_code: { type: string }
+                exchange_rate: { type: string, default: "1" }
+                pricing_mode: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+                customer_reference: { type: string }
+                transporter: { type: string }
+                vehicle_number: { type: string }
+                shipping_terms: { type: string }
+                notes: { type: string }
+                terms_and_conditions: { type: string }
+                payment_terms_days: { type: integer }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/SalesDocument" } } } }
+        "400":
+          description: INVALID_DOCUMENT_TYPE / INVALID_EXCHANGE_RATE.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /sales/documents/{id}:
+    get:
+      tags: [Sales]
+      summary: Get a sales document with its lines.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: "#/components/schemas/SalesDocument" }
+                  lines: { type: array, items: { $ref: "#/components/schemas/SalesDocumentLine" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /sales/documents/{id}/lines:
+    post:
+      tags: [Sales]
+      summary: Add a line to a DRAFT sales document — every call is immediately persisted (the billing screen has no unsaved client-side state).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_variant_id, unit_id, quantity, unit_price]
+              properties:
+                product_variant_id: { type: string, format: uuid }
+                unit_id: { type: string, format: uuid }
+                quantity: { type: string }
+                unit_price: { type: string }
+                line_discount_amount: { type: string, default: "0" }
+                batch_code: { type: string }
+                serial_code: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/SalesDocumentLine" } } } }
+        "409":
+          description: DOCUMENT_NOT_DRAFT.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /sales/documents/{id}/finalize:
+    post:
+      tags: [Sales]
+      summary: >
+        Finalize a sales document — one transaction that: calls the tax
+        engine and snapshots the result immutably, posts inventory
+        movements, auto-posts the accounting journal, and (for
+        TAX_INVOICE) enqueues an e-Invoice outbox event. Immutable
+        afterward (docs/architecture.md §5, §9).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SalesDocument" } } } }
+        "409":
+          description: DOCUMENT_NOT_DRAFT / EMPTY_DOCUMENT.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /sales/documents/{id}/convert:
+    post:
+      tags: [Sales]
+      summary: Convert a finalized document into a new one of a different type (e.g. quotation → sales order → invoice).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [target_type], properties: { target_type: { $ref: "#/components/schemas/SalesDocumentType" } } }
+      responses:
+        "201": { description: Created — the new DRAFT document., content: { application/json: { schema: { $ref: "#/components/schemas/SalesDocument" } } } }
+        "409":
+          description: DOCUMENT_NOT_FINALIZED.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /sales/documents/{id}/print:
+    get:
+      tags: [Sales]
+      summary: Render a finalized document to PDF.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: template
+          in: query
+          schema: { $ref: "#/components/schemas/PrintTemplate" }
+          description: Defaults to A4_GST_INVOICE.
+      responses:
+        "200":
+          description: PDF bytes.
+          content: { application/pdf: { schema: { type: string, format: binary } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /sales/billing-lookup:
+    get:
+      tags: [Sales]
+      summary: Product search + stock + price in one call — the billing counter's scan/search-to-add endpoint.
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: warehouse_id, in: query, schema: { type: string, format: uuid }, description: When set, stock quantities are scoped to this warehouse. }
+        - { name: price_list_id, in: query, schema: { type: string, format: uuid }, description: When set, unit_price resolves against this price list. }
+      responses:
+        "200":
+          description: OK. Capped at 10 results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ProductID: { type: string, format: uuid }
+                        ProductName: { type: string }
+                        HSNSACCode: { type: string }
+                        ProductVariantID: { type: string, format: uuid }
+                        SKUCode: { type: string }
+                        QuantityOnHand: { type: string }
+                        QuantityAvailable: { type: string }
+                        UnitPrice: { allOf: [{ $ref: "#/components/schemas/Money" }], nullable: true }
+
+  # ============================================================
+  # ACCOUNTING — chart of accounts, double-entry journals, receipts/
+  # payments, party ledger/ageing, fiscal periods, bank accounts.
+  # Journals themselves have no direct POST here — every journal is
+  # created by an auto-posting call from sales/purchases finalize, never
+  # hand-entered over the API (docs/adr/0003). Verified against
+  # internal/modules/accounting/domain/domain.go.
+  # ============================================================
+  /accounting/accounts:
+    get:
+      tags: [Accounting]
+      summary: List the chart of accounts.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Account" } } } } }
+
+  /accounting/accounts/ensure-default-chart:
+    post:
+      tags: [Accounting]
+      summary: Idempotently seed the default chart of accounts for the current organisation (brief §14's account list) if it doesn't exist yet.
+      responses:
+        "204": { description: Done (idempotent — a no-op if already seeded), no content. }
+
+  /accounting/journals/{id}:
+    get:
+      tags: [Accounting]
+      summary: Get a posted journal with its lines.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  journal: { $ref: "#/components/schemas/Journal" }
+                  lines: { type: array, items: { $ref: "#/components/schemas/JournalLine" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /accounting/receipts:
+    post:
+      tags: [Accounting]
+      summary: Record money received from a customer. Posts a balanced journal (Dr Cash/Bank, Cr Accounts Receivable) in the same call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [party_id, amount, method]
+              properties:
+                party_id: { type: string, format: uuid }
+                sales_document_id: { type: string, format: uuid, nullable: true, description: Optional — links the receipt to the invoice it's paying down. }
+                amount: { type: string }
+                bank_account_id: { type: string, format: uuid, nullable: true }
+                method: { $ref: "#/components/schemas/PaymentMethod" }
+                reference_number: { type: string }
+                received_at: { type: string, format: date-time, nullable: true }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Receipt" } } } }
+        "400":
+          description: UNBALANCED_JOURNAL / EMPTY_JOURNAL.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "409":
+          description: PERIOD_LOCKED.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /accounting/payments:
+    post:
+      tags: [Accounting]
+      summary: Record money paid to a supplier. Posts a balanced journal (Dr Accounts Payable, Cr Cash/Bank) in the same call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [party_id, amount, method]
+              properties:
+                party_id: { type: string, format: uuid }
+                purchase_document_id: { type: string, format: uuid, nullable: true }
+                amount: { type: string }
+                bank_account_id: { type: string, format: uuid, nullable: true }
+                method: { $ref: "#/components/schemas/PaymentMethod" }
+                reference_number: { type: string }
+                paid_at: { type: string, format: date-time, nullable: true }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Payment" } } } }
+        "409":
+          description: PERIOD_LOCKED.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /accounting/parties/{id}/ledger:
+    get:
+      tags: [Accounting]
+      summary: Get a party's ledger — derived fresh from journal_lines every call, never a stored balance column.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: as_of, in: query, schema: { type: string, format: date }, description: "YYYY-MM-DD, defaults to today." }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/LedgerEntry" } } } } }
+
+  /accounting/parties/{id}/ageing:
+    get:
+      tags: [Accounting]
+      summary: Get a party's outstanding-balance ageing (current/1-30/31-60/61-90/90+ days), oldest-first FIFO credit-to-debit matching.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: as_of, in: query, schema: { type: string, format: date } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AgeingBucket" } } } }
+
+  /accounting/fiscal-periods:
+    get:
+      tags: [Accounting]
+      summary: List fiscal periods.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/FiscalPeriod" } } } } }
+    post:
+      tags: [Accounting]
+      summary: Create a fiscal period.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_date, end_date, label]
+              properties:
+                start_date: { type: string, format: date-time }
+                end_date: { type: string, format: date-time }
+                label: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalPeriod" } } } }
+
+  /accounting/fiscal-periods/{id}/lock:
+    post:
+      tags: [Accounting]
+      summary: Lock a fiscal period — blocks further journal posting into it (accounting.post) unless the caller also holds accounting.override_locked_period.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "204": { description: Locked, no content. }
+
+  /accounting/fiscal-periods/{id}/unlock:
+    post:
+      tags: [Accounting]
+      summary: Unlock a fiscal period.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "204": { description: Unlocked, no content. }
+
+  /accounting/bank-accounts:
+    get:
+      tags: [Accounting]
+      summary: List bank/cash accounts.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/BankAccount" } } } } }
+    post:
+      tags: [Accounting]
+      summary: Create a bank or cash account (also creates its linked GL account).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legal_entity_id, name, kind, currency_code]
+              properties:
+                legal_entity_id: { type: string, format: uuid }
+                name: { type: string }
+                kind: { type: string, enum: [BANK, CASH] }
+                account_number: { type: string }
+                bank_name: { type: string }
+                ifsc_code: { type: string }
+                currency_code: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/BankAccount" } } } }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -1603,6 +1959,201 @@ components:
         CessRate: { type: string }
         ValidFrom: { type: string, format: date-time }
         ValidTo: { type: string, format: date-time, nullable: true }
+        CreatedAt: { type: string, format: date-time }
+
+    SalesDocumentType:
+      type: string
+      enum: [QUOTATION, PROFORMA_INVOICE, SALES_ORDER, DELIVERY_CHALLAN, TAX_INVOICE, POS_INVOICE, CREDIT_NOTE, DEBIT_NOTE, SALES_RETURN, RECURRING_INVOICE]
+
+    PrintTemplate:
+      type: string
+      enum: [A4_GST_INVOICE, COMPACT_INVOICE, THERMAL_80MM, THERMAL_58MM, QUOTATION, PURCHASE_ORDER, DELIVERY_CHALLAN, RECEIPT, STATEMENT, CREDIT_NOTE, DEBIT_NOTE]
+
+    SalesDocument:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        LegalEntityID: { type: string, format: uuid }
+        BranchID: { type: string, format: uuid }
+        WarehouseID: { type: string, format: uuid }
+        CustomerPartyID: { type: string, format: uuid }
+        DocumentType: { $ref: "#/components/schemas/SalesDocumentType" }
+        DocumentNumber: { type: string }
+        ReferenceDocumentID: { type: string, format: uuid, nullable: true }
+        Status: { type: string, enum: [DRAFT, FINALIZED, CANCELLED] }
+        IssueDate: { type: string, format: date-time }
+        DueDate: { type: string, format: date-time, nullable: true }
+        SupplyDate: { type: string, format: date-time, nullable: true }
+        BillingAddressID: { type: string, format: uuid, nullable: true }
+        ShippingAddressID: { type: string, format: uuid, nullable: true }
+        CustomerTaxRegistrationID: { type: string, format: uuid, nullable: true }
+        PlaceOfSupplyStateCode: { type: string }
+        SalespersonUserID: { type: string, format: uuid, nullable: true }
+        PriceListID: { type: string, format: uuid, nullable: true }
+        CurrencyCode: { type: string }
+        BaseCurrencyCode: { type: string }
+        ExchangeRate: { type: string }
+        PricingMode: { type: string, enum: [INCLUSIVE, EXCLUSIVE] }
+        CustomerReference: { type: string }
+        Transporter: { type: string }
+        VehicleNumber: { type: string }
+        ShippingTerms: { type: string }
+        Notes: { type: string }
+        TermsAndConditions: { type: string }
+        PaymentTermsDays: { type: integer }
+        TaxDocumentID: { type: string, format: uuid, nullable: true, description: Set on finalize — points at the immutable tax calculation snapshot (Stage 5a). }
+        GrandTotalAmount: { allOf: [{ $ref: "#/components/schemas/Money" }], nullable: true, description: Set on finalize. }
+        CreatedBy: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+        FinalizedAt: { type: string, format: date-time, nullable: true }
+
+    SalesDocumentLine:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        SalesDocumentID: { type: string, format: uuid }
+        LineNumber: { type: integer }
+        ProductVariantID: { type: string, format: uuid }
+        UnitID: { type: string, format: uuid }
+        Quantity: { type: string }
+        UnitPrice: { $ref: "#/components/schemas/Money" }
+        LineDiscountAmount: { $ref: "#/components/schemas/Money" }
+        HSNSACCode: { type: string, description: Snapshotted from the product at add-line time — a later catalogue edit never changes a finalized document's tax classification. }
+        LineTotal: { $ref: "#/components/schemas/Money" }
+        BatchCode: { type: string }
+        SerialCode: { type: string }
+        CreatedAt: { type: string, format: date-time }
+
+    PaymentMethod:
+      type: string
+      enum: [CASH, UPI, CARD, BANK_TRANSFER, CHEQUE, OTHER]
+
+    Account:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        Code: { type: string }
+        Name: { type: string }
+        AccountType: { type: string, enum: [ASSET, LIABILITY, EQUITY, INCOME, EXPENSE] }
+        NormalBalance: { type: string, enum: [DEBIT, CREDIT] }
+        ParentAccountID: { type: string, format: uuid, nullable: true }
+        IsSystem: { type: boolean }
+        IsActive: { type: boolean }
+        CreatedAt: { type: string, format: date-time }
+
+    Journal:
+      type: object
+      description: Every journal is created already POSTED — there is no DRAFT to edit; a correction is a new journal with ReversedJournalID set, never a mutation.
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        SourceType: { type: string }
+        SourceID: { type: string, format: uuid, nullable: true }
+        JournalDate: { type: string, format: date-time }
+        Description: { type: string }
+        ReversedJournalID: { type: string, format: uuid, nullable: true }
+        CreatedBy: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+
+    JournalLine:
+      type: object
+      description: Exactly one of Debit/Credit is positive, the other zero — enforced by a DB CHECK constraint as well as the app layer.
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        JournalID: { type: string, format: uuid }
+        AccountID: { type: string, format: uuid }
+        PartyID: { type: string, format: uuid, nullable: true }
+        Debit: { $ref: "#/components/schemas/Money" }
+        Credit: { $ref: "#/components/schemas/Money" }
+        Description: { type: string }
+        CreatedAt: { type: string, format: date-time }
+
+    Receipt:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        PartyID: { type: string, format: uuid }
+        SalesDocumentID: { type: string, format: uuid, nullable: true }
+        Amount: { $ref: "#/components/schemas/Money" }
+        BankAccountID: { type: string, format: uuid, nullable: true }
+        Method: { $ref: "#/components/schemas/PaymentMethod" }
+        ReferenceNumber: { type: string }
+        ReceivedAt: { type: string, format: date-time }
+        JournalID: { type: string, format: uuid }
+        CreatedBy: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+
+    Payment:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        PartyID: { type: string, format: uuid }
+        PurchaseDocumentID: { type: string, format: uuid, nullable: true }
+        Amount: { $ref: "#/components/schemas/Money" }
+        BankAccountID: { type: string, format: uuid, nullable: true }
+        Method: { $ref: "#/components/schemas/PaymentMethod" }
+        ReferenceNumber: { type: string }
+        PaidAt: { type: string, format: date-time }
+        JournalID: { type: string, format: uuid }
+        CreatedBy: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+
+    LedgerEntry:
+      type: object
+      properties:
+        JournalID: { type: string, format: uuid }
+        JournalDate: { type: string, format: date-time }
+        SourceType: { type: string }
+        SourceID: { type: string, format: uuid, nullable: true }
+        Description: { type: string }
+        Debit: { $ref: "#/components/schemas/Money" }
+        Credit: { $ref: "#/components/schemas/Money" }
+        RunningBalance: { $ref: "#/components/schemas/Money" }
+
+    AgeingBucket:
+      type: object
+      properties:
+        Current: { $ref: "#/components/schemas/Money" }
+        Days1To30: { $ref: "#/components/schemas/Money" }
+        Days31To60: { $ref: "#/components/schemas/Money" }
+        Days61To90: { $ref: "#/components/schemas/Money" }
+        Days90Plus: { $ref: "#/components/schemas/Money" }
+        Total: { $ref: "#/components/schemas/Money" }
+
+    FiscalPeriod:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        StartDate: { type: string, format: date-time }
+        EndDate: { type: string, format: date-time }
+        Label: { type: string }
+        IsLocked: { type: boolean }
+        LockedAt: { type: string, format: date-time, nullable: true }
+        LockedBy: { type: string, format: uuid, nullable: true }
+        CreatedAt: { type: string, format: date-time }
+
+    BankAccount:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        LegalEntityID: { type: string, format: uuid }
+        Name: { type: string }
+        Kind: { type: string, enum: [BANK, CASH] }
+        AccountNumber: { type: string }
+        BankName: { type: string }
+        IFSCCode: { type: string }
+        CurrencyCode: { type: string }
+        GLAccountID: { type: string, format: uuid }
+        IsActive: { type: boolean }
         CreatedAt: { type: string, format: date-time }
 
     UnmodeledResponse:
