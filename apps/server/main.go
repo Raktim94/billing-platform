@@ -383,7 +383,7 @@ func run() error {
 			inventoryhttp.NewHandlers(inventorySvc).Mount(r)
 			purchaseshttp.NewHandlers(purchasesSvc).Mount(r)
 			gstindiahttp.NewHandlers(gstindiaSvc).Mount(r)
-			saleshttp.NewHandlers(salesSvc).Mount(r)
+			saleshttp.NewHandlers(salesSvc).WithEWayBill(pool, ewaybillSvc).Mount(r)
 			accountinghttp.NewHandlers(accountingSvc).Mount(r)
 			reportinghttp.NewHandlers(reportingSvc).Mount(r)
 			webhookshttp.NewHandlers(webhooksSvc).Mount(r)

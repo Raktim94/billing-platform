@@ -122,6 +122,13 @@ type InvoiceData struct {
 	IRN          string
 	AckNumber    string
 	SignedQRData []byte
+	// EWBNumber/EWBValidUntil are e-Way Bill fields (Stage 8/8c) — nil/""
+	// today unless a caller populates them, same "rendered only when
+	// present, never fabricated" rule as IRN above. A printed invoice
+	// with EWBNumber set is what a driver actually needs at a roadside
+	// check, so this is not cosmetic.
+	EWBNumber     string
+	EWBValidUntil *time.Time
 }
 
 // PricingModeLabel is a small display helper — not business logic.

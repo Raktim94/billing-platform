@@ -115,6 +115,13 @@ func drawHeader(pdf *fpdf.Fpdf, data InvoiceData, lo layout, title string) {
 	if data.IRN != "" {
 		pdf.CellFormat(0, 5, "IRN: "+data.IRN, "", 1, "L", false, 0, "")
 	}
+	if data.EWBNumber != "" {
+		line := "e-Way Bill No: " + data.EWBNumber
+		if data.EWBValidUntil != nil {
+			line += "   Valid Until: " + data.EWBValidUntil.Format("02-Jan-2006 15:04")
+		}
+		pdf.CellFormat(0, 5, line, "", 1, "L", false, 0, "")
+	}
 	pdf.Ln(1)
 }
 

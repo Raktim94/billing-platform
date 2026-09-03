@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,17 +13,39 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	ewaybillapp "billing-platform/internal/modules/ewaybill/app"
 	"billing-platform/internal/modules/sales/app"
 	"billing-platform/internal/modules/sales/domain"
 	"billing-platform/internal/modules/sales/printing"
 	taxdomain "billing-platform/internal/modules/taxation/domain"
+	"billing-platform/internal/platform/database"
 	httpx "billing-platform/internal/platform/http"
 	"billing-platform/internal/platform/permissions"
 )
 
-type Handlers struct{ svc *app.Service }
+type Handlers struct {
+	svc *app.Service
+	// pool/ewaybill are only used by printDocument, to enrich a printed
+	// invoice with its e-Way Bill number if one has been generated (a
+	// printed invoice is exactly what a driver needs at a roadside check
+	// — see the doc comment on printing.InvoiceData.EWBNumber). Nil-
+	// guarded so a composition root that hasn't wired e-Way Bill support
+	// yet still gets a working print path, just without that one line.
+	pool     *database.Pool
+	ewaybill *ewaybillapp.Service
+}
 
 func NewHandlers(svc *app.Service) *Handlers { return &Handlers{svc: svc} }
+
+// WithEWayBill returns a copy of h with the e-Way Bill enrichment
+// dependency wired in — a separate step, mirroring ewaybill.Service's own
+// WithFreePortal pattern, so every existing NewHandlers call site keeps
+// working unchanged.
+func (h *Handlers) WithEWayBill(pool *database.Pool, ewaybillSvc *ewaybillapp.Service) *Handlers {
+	cp := *h
+	cp.pool, cp.ewaybill = pool, ewaybillSvc
+	return &cp
+}
 
 func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/sales/documents", h.listDocuments)
@@ -269,6 +292,7 @@ func (h *Handlers) printDocument(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, r, err)
 		return
 	}
+	h.enrichWithEWayBill(r.Context(), principal(r).OrganisationID, id, data)
 	pdfBytes, err := printing.RenderPDF(tpl, *data)
 	if err != nil {
 		httpx.WriteError(w, r, &httpx.AppError{Status: http.StatusInternalServerError, Code: "RENDER_FAILED", Message: "Could not render the document.", Cause: err})
@@ -277,6 +301,28 @@ func (h *Handlers) printDocument(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/pdf")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(pdfBytes)
+}
+
+// enrichWithEWayBill best-effort-populates data.EWBNumber/EWBValidUntil
+// from any e-Way Bill record generated for this document. Never fails
+// the print itself — an invoice a shop owner needs right now to hand a
+// driver must still render even if the e-Way Bill lookup errors for some
+// unrelated reason; the printed invoice just won't carry the EWB number
+// in that case, same "degrade, don't block" principle BuildInvoiceData
+// itself uses for PreviousBalance.
+func (h *Handlers) enrichWithEWayBill(ctx context.Context, orgID, documentID uuid.UUID, data *printing.InvoiceData) {
+	if h.ewaybill == nil || h.pool == nil {
+		return
+	}
+	_ = h.pool.RunScoped(ctx, orgID, func(ctx context.Context) error {
+		rec, err := h.ewaybill.GetRecordForDocument(ctx, orgID, documentID)
+		if err != nil || rec == nil || rec.EWBNumber == nil {
+			return nil
+		}
+		data.EWBNumber = *rec.EWBNumber
+		data.EWBValidUntil = rec.ValidUntil
+		return nil
+	})
 }
 
 // billingLookup is the sales-screen search endpoint (brief §24/§25):
