@@ -1,0 +1,1614 @@
+openapi: 3.1.0
+info:
+  title: billing-platform API
+  version: "0.1.0"
+  description: >
+    Multi-company, multi-branch, multi-warehouse billing, inventory,
+    accounting, and India-GST tax-management API. This spec is generated
+    by reading `internal/modules/*/httpapi/handlers.go` directly — every
+    path, method, and request/response shape below is verified against
+    the actual Go handler code, not inferred from `docs/architecture.md`'s
+    design intent. See `docs/api.md` for narrative conventions (auth,
+    error envelope, money shape, pagination status) that apply across
+    every endpoint below rather than being repeated per-operation.
+
+    Status: paths for every module are present (see `docs/TODO.md`
+    Cross-cutting section for progress); request/response schemas are
+    complete for identity, organisation, catalogue, contacts, and sales.
+    Endpoints not yet given a full typed schema use a documented
+    `additionalProperties: true` placeholder rather than a fabricated
+    shape — check the linked handler file for the exact fields until that
+    module's schema pass lands.
+servers:
+  - url: /api/v1
+    description: Same origin as the web app; also reachable directly on the configured HTTP_PORT.
+
+security:
+  - sessionCookie: []
+  - apiKey: []
+
+paths:
+  # ============================================================
+  # IDENTITY — auth, sessions, MFA, password reset, API keys
+  # apps/server/main.go mounts these both inside and outside the
+  # RequireAuthOrAPIKey group; see each operation's `security` override.
+  # ============================================================
+  /auth/bootstrap:
+    post:
+      tags: [Identity]
+      summary: First-run setup — creates the first organisation, legal entity, branch, warehouse, and owner user.
+      description: >
+        Only reachable when the server was started with ENABLE_BOOTSTRAP=true
+        (apps/server/main.go) — a real deployment disables this once initial
+        setup is done, since it has no permission check by definition.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organisation_name, default_currency_code, default_timezone, legal_entity_name, country_code, branch_code, branch_name, warehouse_code, warehouse_name, owner_email, owner_full_name, owner_password]
+              properties:
+                organisation_name: { type: string }
+                default_currency_code: { type: string, example: INR }
+                default_timezone: { type: string, example: Asia/Kolkata }
+                legal_entity_name: { type: string }
+                country_code: { type: string, example: IN }
+                branch_code: { type: string }
+                branch_name: { type: string }
+                warehouse_code: { type: string }
+                warehouse_name: { type: string }
+                owner_email: { type: string, format: email }
+                owner_full_name: { type: string }
+                owner_password: { type: string, format: password }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organisation_id: { type: string, format: uuid }
+                  legal_entity_id: { type: string, format: uuid }
+                  branch_id: { type: string, format: uuid }
+                  warehouse_id: { type: string, format: uuid }
+                  owner_user_id: { type: string, format: uuid }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/login:
+    post:
+      tags: [Identity]
+      summary: Log in with email + password (+ MFA code if enrolled). Sets the session cookie.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+                mfa_code: { type: string, description: Required only if the account has MFA enrolled; a first attempt without it fails with MFA_REQUIRED. }
+      responses:
+        "200":
+          description: Logged in. Session cookie set via Set-Cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organisation_id: { type: string, format: uuid }
+                  user_id: { type: string, format: uuid }
+                  idle_expires_at: { type: string, format: date-time }
+                  absolute_expires_at: { type: string, format: date-time }
+        "401":
+          description: Invalid credentials, or MFA_REQUIRED (retry with mfa_code).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: RATE_LIMITED — too many attempts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/password-reset/request:
+    post:
+      tags: [Identity]
+      summary: Request a password reset email/link.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties: { email: { type: string, format: email } }
+      responses:
+        "200":
+          description: >
+            Always 200 regardless of whether the account exists — response
+            never reveals account existence.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { status: { type: string, example: if_account_exists_reset_link_sent } }
+
+  /auth/password-reset/complete:
+    post:
+      tags: [Identity]
+      summary: Complete a password reset using the token from the reset link.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password, confirm_password]
+              properties:
+                token: { type: string }
+                new_password: { type: string, format: password }
+                confirm_password: { type: string, format: password }
+      responses:
+        "200":
+          description: Password reset.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: password_reset } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/logout:
+    post:
+      tags: [Identity]
+      summary: Log out the current session. Clears the session cookie.
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: logged_out } } }
+
+  /auth/logout-all:
+    post:
+      tags: [Identity]
+      summary: Revoke every session for the current user (all devices).
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: all_sessions_revoked } } }
+
+  /auth/sessions:
+    get:
+      tags: [Identity]
+      summary: List active sessions for the current user.
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        created_at: { type: string, format: date-time }
+                        last_seen_at: { type: string, format: date-time }
+                        ip: { type: string }
+                        user_agent: { type: string }
+
+  /auth/change-password:
+    post:
+      tags: [Identity]
+      summary: Change the current user's password. Clears the session cookie on success (re-login required).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password, confirm_password]
+              properties:
+                current_password: { type: string, format: password }
+                new_password: { type: string, format: password }
+                confirm_password: { type: string, format: password }
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: password_changed } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/mfa/enroll:
+    post:
+      tags: [Identity]
+      summary: Begin TOTP MFA enrollment — returns the secret and provisioning URI for an authenticator app.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_name: { type: string }
+                issuer: { type: string }
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret: { type: string }
+                  provisioning_uri: { type: string }
+
+  /auth/mfa/verify:
+    post:
+      tags: [Identity]
+      summary: Confirm MFA enrollment with a code from the authenticator app. Returns one-time recovery codes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string } } }
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recovery_codes: { type: array, items: { type: string } }
+        "401":
+          description: MFA_INVALID — wrong code.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /auth/mfa/disable:
+    post:
+      tags: [Identity]
+      summary: Disable MFA (requires current password as a step-up check).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } }
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: mfa_disabled } } }
+
+  /api-keys:
+    post:
+      tags: [Identity]
+      summary: Create an API key. The raw key is returned exactly once — subsequent GETs return key_prefix only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name: { type: string }
+                scopes:
+                  type: array
+                  items: { $ref: "#/components/schemas/APIScope" }
+                expires_at: { type: string, format: date-time, nullable: true }
+                allowed_ip: { type: string, nullable: true, description: Single IP the key is restricted to, if set. }
+      responses:
+        "201":
+          description: Created. `key` is the only response that ever contains the raw secret.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  name: { type: string }
+                  key_prefix: { type: string }
+                  scopes: { type: array, items: { $ref: "#/components/schemas/APIScope" } }
+                  key: { type: string, description: Raw API key — store it now, it is never shown again. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    get:
+      tags: [Identity]
+      summary: List API keys for the current user (key_prefix only, never the raw key).
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_keys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        key_prefix: { type: string }
+                        scopes: { type: array, items: { $ref: "#/components/schemas/APIScope" } }
+                        expires_at: { type: string, format: date-time, nullable: true }
+                        last_used_at: { type: string, format: date-time, nullable: true }
+                        created_at: { type: string, format: date-time }
+
+  /api-keys/{id}:
+    delete:
+      tags: [Identity]
+      summary: Revoke an API key immediately.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: revoked } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ============================================================
+  # ORGANISATION — tenant hierarchy: org / legal entity / branch / warehouse
+  # Response bodies here are domain structs with NO json tags, so field
+  # names serialize as Go's exact exported (PascalCase) names — unlike
+  # every request body in this API, which is snake_case. Verified against
+  # internal/modules/organisation/domain/domain.go.
+  # ============================================================
+  /organisation:
+    get:
+      tags: [Organisation]
+      summary: Get the current user's organisation.
+      responses:
+        "200":
+          description: OK.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Organisation" } } }
+
+  /organisation/ewaybill-mode:
+    put:
+      tags: [Organisation]
+      summary: Set the org-wide e-Way Bill mode (Stage 8c) — FREE_PORTAL (default) or AUTOMATIC_API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties: { mode: { type: string, enum: [FREE_PORTAL, AUTOMATIC_API] } }
+      responses:
+        "200":
+          description: OK.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Organisation" } } }
+        "400":
+          description: INVALID_MODE.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /legal-entities:
+    get:
+      tags: [Organisation]
+      summary: List legal entities in the current organisation.
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { legal_entities: { type: array, items: { $ref: "#/components/schemas/LegalEntity" } } }
+    post:
+      tags: [Organisation]
+      summary: Create a legal entity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legal_name, country_code, base_currency_code]
+              properties:
+                legal_name: { type: string }
+                country_code: { type: string }
+                base_currency_code: { type: string }
+      responses:
+        "201":
+          description: Created.
+          content: { application/json: { schema: { $ref: "#/components/schemas/LegalEntity" } } }
+
+  /branches:
+    get:
+      tags: [Organisation]
+      summary: List branches in the current organisation.
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { branches: { type: array, items: { $ref: "#/components/schemas/Branch" } } }
+    post:
+      tags: [Organisation]
+      summary: Create a branch under a legal entity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legal_entity_id, code, name, timezone]
+              properties:
+                legal_entity_id: { type: string, format: uuid }
+                code: { type: string }
+                name: { type: string }
+                timezone: { type: string, example: Asia/Kolkata }
+      responses:
+        "201":
+          description: Created.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Branch" } } }
+
+  /branches/{id}/warehouses:
+    get:
+      tags: [Organisation]
+      summary: List warehouses under a branch.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid }, description: Branch ID. }
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { warehouses: { type: array, items: { $ref: "#/components/schemas/Warehouse" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /warehouses:
+    post:
+      tags: [Organisation]
+      summary: Create a warehouse under a branch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [branch_id, code, name]
+              properties:
+                branch_id: { type: string, format: uuid }
+                code: { type: string }
+                name: { type: string }
+      responses:
+        "201":
+          description: Created.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Warehouse" } } }
+
+  # ============================================================
+  # CATALOGUE — units of measure, categories, brands, products, variants, barcodes
+  # Response bodies are domain structs with no json tags (PascalCase),
+  # same pattern as Organisation above. Verified against
+  # internal/modules/catalogue/domain/domain.go.
+  # ============================================================
+  /catalogue/units:
+    get:
+      tags: [Catalogue]
+      summary: List units of measure.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { units_of_measure: { type: array, items: { $ref: "#/components/schemas/UnitOfMeasure" } } } } } } }
+    post:
+      tags: [Catalogue]
+      summary: Create a unit of measure.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [code, name], properties: { code: { type: string }, name: { type: string } } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/UnitOfMeasure" } } } }
+
+  /catalogue/unit-conversions:
+    post:
+      tags: [Catalogue]
+      summary: "Create a unit conversion (\"1 unit of from_unit_id = factor units of to_unit_id\", e.g. BOX→PCS)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_unit_id, to_unit_id, factor]
+              properties:
+                from_unit_id: { type: string, format: uuid }
+                to_unit_id: { type: string, format: uuid }
+                factor: { type: string, description: Decimal string, e.g. "25". }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/UnitConversion" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /catalogue/categories:
+    get:
+      tags: [Catalogue]
+      summary: List categories.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { categories: { type: array, items: { $ref: "#/components/schemas/Category" } } } } } } }
+    post:
+      tags: [Catalogue]
+      summary: Create a category (optionally nested under a parent).
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, parent_id: { type: string, format: uuid, nullable: true } } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Category" } } } }
+
+  /catalogue/brands:
+    get:
+      tags: [Catalogue]
+      summary: List brands.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { brands: { type: array, items: { $ref: "#/components/schemas/Brand" } } } } } } }
+    post:
+      tags: [Catalogue]
+      summary: Create a brand.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Brand" } } } }
+
+  /catalogue/products:
+    get:
+      tags: [Catalogue]
+      summary: List, or search with `q`, products (Stage 3 trigram index — see docs/database.md).
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "Free-text search; when present, results are capped at 20 and this behaves as a search rather than a full list." }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { products: { type: array, items: { $ref: "#/components/schemas/Product" } } } } } } }
+    post:
+      tags: [Catalogue]
+      summary: Create a product. (A product isn't sellable until it has at least one variant — see POST /catalogue/variants.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base_uom_id, name]
+              properties:
+                category_id: { type: string, format: uuid, nullable: true }
+                brand_id: { type: string, format: uuid, nullable: true }
+                base_uom_id: { type: string, format: uuid }
+                name: { type: string }
+                description: { type: string }
+                hsn_sac_code: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Product" } } } }
+
+  /catalogue/products/{id}:
+    get:
+      tags: [Catalogue]
+      summary: Get a product by ID.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Product" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /catalogue/products/{id}/variants:
+    get:
+      tags: [Catalogue]
+      summary: List variants of a product.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { variants: { type: array, items: { $ref: "#/components/schemas/ProductVariant" } } } } } } }
+
+  /catalogue/products/import:
+    post:
+      tags: [Catalogue]
+      summary: Bulk-import products from an uploaded CSV or XLSX file.
+      parameters:
+        - { name: format, in: query, required: true, schema: { type: string, enum: [csv, xlsx] } }
+        - { name: dry_run, in: query, schema: { type: boolean, default: false }, description: Validate and report without committing any row. }
+      requestBody:
+        required: true
+        content:
+          text/csv: { schema: { type: string, format: binary } }
+          application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ImportReport" } } } }
+        "400":
+          description: INVALID_CSV / INVALID_XLSX / INVALID_FORMAT.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /catalogue/variants:
+    post:
+      tags: [Catalogue]
+      summary: Create a variant of an existing product (SKU-level — this is what a sale/purchase line and stock movement actually reference).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_id, sku_code]
+              properties:
+                product_id: { type: string, format: uuid }
+                sku_code: { type: string }
+                attributes: { type: object, additionalProperties: true, description: "Free-form (size, colour, ...)." }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/ProductVariant" } } } }
+        "409":
+          description: DUPLICATE_SKU.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /catalogue/barcodes:
+    post:
+      tags: [Catalogue]
+      summary: Attach a barcode to a variant, at a given unit (e.g. the BOX barcode vs. the PCS barcode of the same variant).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variant_id, unit_id, barcode]
+              properties:
+                variant_id: { type: string, format: uuid }
+                unit_id: { type: string, format: uuid }
+                barcode: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Barcode" } } } }
+
+  /catalogue/barcodes/{code}:
+    get:
+      tags: [Catalogue]
+      summary: Look up a barcode (the Sales billing screen's scan-to-add path).
+      parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Barcode" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ============================================================
+  # CONTACTS — parties (customer/supplier/both), addresses, tax registrations
+  # Verified against internal/modules/contacts/domain/domain.go.
+  # ============================================================
+  /contacts/parties:
+    get:
+      tags: [Contacts]
+      summary: List, or search with `q`, parties.
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "Free-text (name/phone); when present, results are capped at 20." }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { parties: { type: array, items: { $ref: "#/components/schemas/Party" } } } } } } }
+    post:
+      tags: [Contacts]
+      summary: Create a party (customer, supplier, or both).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [party_type, legal_name]
+              properties:
+                party_type: { type: string, enum: [CUSTOMER, SUPPLIER, BOTH] }
+                legal_name: { type: string }
+                trade_name: { type: string }
+                phone: { type: string }
+                email: { type: string }
+                currency_code: { type: string }
+                credit_limit_amount: { type: string, nullable: true, description: Decimal string. }
+                payment_terms_days: { type: integer, nullable: true }
+                notes: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Party" } } } }
+        "400":
+          description: INVALID_PARTY_TYPE / LEGAL_NAME_REQUIRED / INVALID_CREDIT_LIMIT.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /contacts/parties/{id}:
+    get:
+      tags: [Contacts]
+      summary: Get a party by ID.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Party" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /contacts/parties/{id}/addresses:
+    get:
+      tags: [Contacts]
+      summary: List a party's addresses.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { addresses: { type: array, items: { $ref: "#/components/schemas/Address" } } } } } } }
+    post:
+      tags: [Contacts]
+      summary: Add an address to a party.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address_type]
+              properties:
+                address_type: { type: string, enum: [BILLING, SHIPPING, WAREHOUSE, REGISTERED_OFFICE] }
+                line1: { type: string }
+                line2: { type: string }
+                city: { type: string }
+                state: { type: string }
+                postal_code: { type: string }
+                country_code: { type: string }
+                is_default: { type: boolean }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Address" } } } }
+        "400":
+          description: INVALID_ADDRESS_TYPE.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /contacts/parties/{id}/tax-registrations:
+    get:
+      tags: [Contacts]
+      summary: List a party's tax registrations (e.g. GSTIN).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { tax_registrations: { type: array, items: { $ref: "#/components/schemas/TaxRegistration" } } } } } } }
+    post:
+      tags: [Contacts]
+      summary: Add a tax registration to a party.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [country_code, registration_number]
+              properties:
+                country_code: { type: string }
+                registration_number: { type: string }
+                state_code: { type: string }
+                is_primary: { type: boolean }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/TaxRegistration" } } } }
+        "409":
+          description: DUPLICATE_REGISTRATION.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /contacts/tax-registrations/{number}:
+    get:
+      tags: [Contacts]
+      summary: Look up a party by its tax registration number (e.g. GSTIN reverse lookup).
+      parameters: [{ name: number, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TaxRegistration" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /contacts/parties/import:
+    post:
+      tags: [Contacts]
+      summary: Bulk-import customers/suppliers from an uploaded CSV or XLSX file.
+      parameters:
+        - { name: format, in: query, required: true, schema: { type: string, enum: [csv, xlsx] } }
+        - { name: dry_run, in: query, schema: { type: boolean, default: false } }
+      requestBody:
+        required: true
+        content:
+          text/csv: { schema: { type: string, format: binary } }
+          application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ImportReport" } } } }
+        "400":
+          description: INVALID_CSV / INVALID_XLSX / INVALID_FORMAT.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  # ============================================================
+  # PRICING — price lists and per-variant/unit price items
+  # Verified against internal/modules/pricing/domain/domain.go.
+  # ============================================================
+  /pricing/price-lists:
+    get:
+      tags: [Pricing]
+      summary: List price lists.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { price_lists: { type: array, items: { $ref: "#/components/schemas/PriceList" } } } } } } }
+    post:
+      tags: [Pricing]
+      summary: Create a price list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, currency_code]
+              properties:
+                name: { type: string }
+                currency_code: { type: string }
+                is_default: { type: boolean }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/PriceList" } } } }
+
+  /pricing/price-lists/{id}:
+    get:
+      tags: [Pricing]
+      summary: Get a price list.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/PriceList" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /pricing/price-lists/{id}/items:
+    get:
+      tags: [Pricing]
+      summary: List price items in a price list.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/PriceListItem" } } } } } } }
+    post:
+      tags: [Pricing]
+      summary: Set the price of a variant/unit combination in this price list.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_variant_id, unit_id, amount, currency_code]
+              properties:
+                product_variant_id: { type: string, format: uuid }
+                unit_id: { type: string, format: uuid }
+                amount: { type: string }
+                currency_code: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/PriceListItem" } } } }
+        "400":
+          description: NEGATIVE_PRICE / INVALID_AMOUNT.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /pricing/price-lists/{id}/resolve:
+    get:
+      tags: [Pricing]
+      summary: Resolve the effective price of a variant/unit in this price list (the Sales billing screen's price lookup).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: variant_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: unit_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/PriceListItem" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ============================================================
+  # INVENTORY — append-only stock movements, materialized balances,
+  # transfers, adjustments, reservations, low-stock, policies
+  # Verified against internal/modules/inventory/domain/domain.go.
+  # ============================================================
+  /inventory/opening-stock:
+    post:
+      tags: [Inventory]
+      summary: Record an OPENING stock movement (initial stock for a variant in a warehouse).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/RecordMovementRequest" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/StockMovement" } } } }
+        "400":
+          description: INVALID_QUANTITY / INVALID_UNIT_COST.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /inventory/adjustments:
+    post:
+      tags: [Inventory]
+      summary: Record a multi-line stock adjustment (ADJUSTMENT_IN/OUT, DAMAGE, EXPIRY, etc.).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouse_id, lines]
+              properties:
+                warehouse_id: { type: string, format: uuid }
+                reason: { type: string }
+                notes: { type: string }
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    required: [product_variant_id, unit_id, quantity, movement_type]
+                    properties:
+                      product_variant_id: { type: string, format: uuid }
+                      unit_id: { type: string, format: uuid }
+                      quantity: { type: string }
+                      movement_type: { type: string, description: "One of the brief §11 movement types, e.g. ADJUSTMENT_IN, ADJUSTMENT_OUT, DAMAGE, EXPIRY." }
+                      batch_code: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  adjustment: { $ref: "#/components/schemas/StockAdjustment" }
+                  movements: { type: array, items: { $ref: "#/components/schemas/StockMovement" } }
+        "400":
+          description: INVALID_QUANTITY / INVALID_MOVEMENT_TYPE.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /inventory/transfers:
+    post:
+      tags: [Inventory]
+      summary: Transfer stock between two warehouses (records paired TRANSFER_OUT/TRANSFER_IN movements atomically).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_warehouse_id, to_warehouse_id, product_variant_id, unit_id, quantity]
+              properties:
+                from_warehouse_id: { type: string, format: uuid }
+                to_warehouse_id: { type: string, format: uuid }
+                product_variant_id: { type: string, format: uuid }
+                unit_id: { type: string, format: uuid }
+                quantity: { type: string }
+                notes: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/StockTransfer" } } } }
+        "409":
+          description: INSUFFICIENT_STOCK.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /inventory/reservations:
+    post:
+      tags: [Inventory]
+      summary: Reserve stock against a reference document (e.g. an in-progress sale) so it can't be double-sold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouse_id, product_variant_id, quantity, reference_type, reference_id]
+              properties:
+                warehouse_id: { type: string, format: uuid }
+                product_variant_id: { type: string, format: uuid }
+                quantity: { type: string }
+                reference_type: { type: string }
+                reference_id: { type: string, format: uuid }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/StockReservation" } } } }
+        "409":
+          description: INSUFFICIENT_STOCK.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /inventory/reservations/{id}/release:
+    post:
+      tags: [Inventory]
+      summary: Release a stock reservation.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: warehouse_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: product_variant_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Released, no content. }
+
+  /inventory/balances:
+    get:
+      tags: [Inventory]
+      summary: Get the current stock balance of a variant in a warehouse.
+      parameters:
+        - { name: warehouse_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: product_variant_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/StockBalance" } } } }
+
+  /inventory/movements:
+    get:
+      tags: [Inventory]
+      summary: List recent stock movements for a variant in a warehouse (most recent 50).
+      parameters:
+        - { name: warehouse_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: product_variant_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { movements: { type: array, items: { $ref: "#/components/schemas/StockMovement" } } } } } } }
+
+  /inventory/low-stock:
+    get:
+      tags: [Inventory]
+      summary: List variants at or below their reorder level in a warehouse.
+      parameters:
+        - { name: warehouse_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { low_stock: { type: array, items: { $ref: "#/components/schemas/StockBalance" } } } } } } }
+
+  /inventory/policies:
+    put:
+      tags: [Inventory]
+      summary: Set the reorder level, safety stock, and negative-stock policy for a variant in a warehouse.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouse_id, product_variant_id, reorder_level, safety_stock]
+              properties:
+                warehouse_id: { type: string, format: uuid }
+                product_variant_id: { type: string, format: uuid }
+                reorder_level: { type: string }
+                safety_stock: { type: string }
+                allow_negative_stock: { type: boolean }
+      responses:
+        "204": { description: Set, no content. }
+
+  # ============================================================
+  # PURCHASES — purchase order / GRN / invoice / return / debit note
+  # (one document family, document_type-parameterized, same pattern as
+  # sales). Verified against internal/modules/purchases/domain/domain.go.
+  # Supplier payment/credit is deliberately NOT here (docs/TODO.md Stage
+  # 4 note — needs Stage 6's ledger to post against).
+  # ============================================================
+  /purchases/documents:
+    get:
+      tags: [Purchases]
+      summary: List purchase documents, optionally filtered by document_type.
+      parameters:
+        - { name: document_type, in: query, schema: { $ref: "#/components/schemas/PurchaseDocumentType" } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { documents: { type: array, items: { $ref: "#/components/schemas/PurchaseDocument" } } } } } } }
+    post:
+      tags: [Purchases]
+      summary: Create a purchase document (DRAFT).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [branch_id, warehouse_id, supplier_party_id, document_type, currency_code]
+              properties:
+                branch_id: { type: string, format: uuid }
+                warehouse_id: { type: string, format: uuid }
+                supplier_party_id: { type: string, format: uuid }
+                document_type: { $ref: "#/components/schemas/PurchaseDocumentType" }
+                reference_document_id: { type: string, format: uuid, nullable: true, description: e.g. the PO a GRN is receiving against. }
+                supplier_invoice_number: { type: string }
+                supplier_invoice_date: { type: string, format: date-time, nullable: true }
+                document_date: { type: string, format: date-time, nullable: true }
+                currency_code: { type: string }
+                notes: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/PurchaseDocument" } } } }
+        "400":
+          description: INVALID_DOCUMENT_TYPE.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /purchases/documents/{id}:
+    get:
+      tags: [Purchases]
+      summary: Get a purchase document with its lines.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: "#/components/schemas/PurchaseDocument" }
+                  lines: { type: array, items: { $ref: "#/components/schemas/PurchaseDocumentLine" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /purchases/documents/{id}/lines:
+    post:
+      tags: [Purchases]
+      summary: Add a line to a DRAFT purchase document.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_variant_id, unit_id, quantity, unit_price]
+              properties:
+                product_variant_id: { type: string, format: uuid }
+                unit_id: { type: string, format: uuid }
+                quantity: { type: string }
+                unit_price: { type: string }
+                batch_code: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/PurchaseDocumentLine" } } } }
+        "409":
+          description: DOCUMENT_NOT_DRAFT.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /purchases/documents/{id}/finalize:
+    post:
+      tags: [Purchases]
+      summary: Finalize a purchase document — posts stock (for stock-affecting types) and, since Stage 6, auto-posts the accounting journal. Immutable afterward.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/PurchaseDocument" } } } }
+        "409":
+          description: DOCUMENT_NOT_DRAFT / EMPTY_DOCUMENT.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  # ============================================================
+  # GST (India) — admin CRUD for tax_rate_master only. Real tax
+  # calculation is server-internal (taxation.CalculateAndSnapshotTx,
+  # invoked by the sales module on finalize) — not a callable endpoint,
+  # since a client-computed tax figure is never trusted (docs/api.md).
+  # Verified against internal/modules/gstindia/domain/domain.go.
+  # ============================================================
+  /gst/tax-rates:
+    post:
+      tags: [GST]
+      summary: Create a tax rate for an HSN/SAC code, effective from a date.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hsn_sac_code, gst_rate, valid_from]
+              properties:
+                hsn_sac_code: { type: string }
+                classification: { $ref: "#/components/schemas/TaxRateClassification" }
+                gst_rate: { type: string, description: "Combined rate, e.g. \"18\" for 18% — never pre-split into CGST/SGST here." }
+                cess_rate: { type: string, default: "0" }
+                valid_from: { type: string, format: date, description: YYYY-MM-DD. }
+                valid_to: { type: string, format: date, nullable: true }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/TaxRateMaster" } } } }
+        "400":
+          description: INVALID_GST_RATE / INVALID_CESS_RATE / INVALID_VALID_FROM / INVALID_VALID_TO.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /gst/tax-rates/{hsn}:
+    get:
+      tags: [GST]
+      summary: List all rate rows on file for an HSN/SAC code (every validity window, not just the currently-effective one).
+      parameters: [{ name: hsn, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { tax_rates: { type: array, items: { $ref: "#/components/schemas/TaxRateMaster" } } } } } } }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: bp_session
+      description: Set by POST /auth/login. Default cookie name; configurable via SESSION_COOKIE_NAME.
+    apiKey:
+      type: http
+      scheme: bearer
+      description: >
+        Authorization: Bearer <key>. Effective permissions are the
+        intersection of the key's declared scopes and the owning user's
+        real RBAC grants — see docs/api.md.
+
+  responses:
+    BadRequest:
+      description: Malformed request body or invalid field value.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Unauthorized:
+      description: No valid session cookie or API key.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Authenticated, but lacking the required permission/scope.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Resource does not exist, or exists in a different organisation (never distinguished from the client's perspective).
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code: { type: string, example: SESSION_INVALID }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+            request_id: { type: string }
+
+    Money:
+      type: object
+      description: >
+        amount is a STRING, always — see docs/api.md. Never parse it as a
+        JS/JSON number for anything beyond display formatting.
+      required: [amount, currency]
+      properties:
+        amount: { type: string, example: "1234.50" }
+        currency: { type: string, example: INR }
+
+    APIScope:
+      type: string
+      enum: [products:read, inventory:read, customers:read, customers:write, invoices:read, invoices:write, reports:read]
+
+    Organisation:
+      type: object
+      description: No json tags on the Go struct — fields serialize as exact PascalCase names.
+      properties:
+        ID: { type: string, format: uuid }
+        Name: { type: string }
+        DefaultCurrencyCode: { type: string }
+        DefaultTimezone: { type: string }
+        EWayBillMode: { type: string, enum: [FREE_PORTAL, AUTOMATIC_API] }
+        Status: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    LegalEntity:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        LegalName: { type: string }
+        CountryCode: { type: string }
+        BaseCurrencyCode: { type: string }
+        GSTIN: { type: string, description: Empty string if not GST-registered — nullable in the domain model, not omitted. }
+        GSTStateCode: { type: string }
+        Status: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    Branch:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        LegalEntityID: { type: string, format: uuid }
+        Code: { type: string }
+        Name: { type: string }
+        Timezone: { type: string }
+        Status: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    Warehouse:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        BranchID: { type: string, format: uuid }
+        Code: { type: string }
+        Name: { type: string }
+        Status: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    UnitOfMeasure:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        Code: { type: string }
+        Name: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    UnitConversion:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        FromUnitID: { type: string, format: uuid }
+        ToUnitID: { type: string, format: uuid }
+        Factor: { type: string }
+        CreatedAt: { type: string, format: date-time }
+
+    Category:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        ParentID: { type: string, format: uuid, nullable: true }
+        Name: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    Brand:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        Name: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    Product:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        CategoryID: { type: string, format: uuid, nullable: true }
+        BrandID: { type: string, format: uuid, nullable: true }
+        BaseUOMID: { type: string, format: uuid }
+        Name: { type: string }
+        Description: { type: string }
+        HSNSACCode: { type: string, description: HSN (goods) or SAC (services) — data only until the gstindia module reads it for tax calculation. }
+        Status: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    ProductVariant:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        ProductID: { type: string, format: uuid }
+        SKUCode: { type: string }
+        Attributes: { type: object, additionalProperties: true }
+        Status: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    Barcode:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        VariantID: { type: string, format: uuid }
+        UnitID: { type: string, format: uuid }
+        Barcode: { type: string }
+        CreatedAt: { type: string, format: date-time }
+
+    ImportReport:
+      type: object
+      description: Shared by every bulk-import endpoint (products, parties, ...) — internal/platform/importer.Report.
+      properties:
+        DryRun: { type: boolean }
+        Total: { type: integer }
+        Committed: { type: integer }
+        Valid: { type: integer, description: Valid but not committed (dry_run=true only). }
+        Errors: { type: integer }
+        Duplicates: { type: integer }
+        Results:
+          type: array
+          items:
+            type: object
+            properties:
+              RowNumber: { type: integer, description: 1-based, counting from the first data row (header excluded). }
+              Outcome: { type: string, enum: [COMMITTED, VALID, ERROR, DUPLICATE] }
+              Message: { type: string, description: Populated for ERROR (why) and DUPLICATE (what it matched). }
+
+    Party:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        PartyType: { type: string, enum: [CUSTOMER, SUPPLIER, BOTH] }
+        LegalName: { type: string }
+        TradeName: { type: string }
+        Phone: { type: string }
+        Email: { type: string }
+        CurrencyCode: { type: string }
+        CreditLimitAmount: { type: string, nullable: true }
+        PaymentTermsDays: { type: integer, nullable: true }
+        Notes: { type: string }
+        Status: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    Address:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        PartyID: { type: string, format: uuid }
+        AddressType: { type: string, enum: [BILLING, SHIPPING, WAREHOUSE, REGISTERED_OFFICE] }
+        Line1: { type: string }
+        Line2: { type: string }
+        City: { type: string }
+        State: { type: string }
+        PostalCode: { type: string }
+        CountryCode: { type: string }
+        IsDefault: { type: boolean }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    TaxRegistration:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        PartyID: { type: string, format: uuid }
+        CountryCode: { type: string }
+        RegistrationNumber: { type: string }
+        StateCode: { type: string }
+        IsPrimary: { type: boolean }
+        CreatedAt: { type: string, format: date-time }
+
+    PriceList:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        Name: { type: string }
+        CurrencyCode: { type: string }
+        IsDefault: { type: boolean }
+        Status: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    PriceListItem:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        PriceListID: { type: string, format: uuid }
+        ProductVariantID: { type: string, format: uuid }
+        UnitID: { type: string, format: uuid }
+        Price: { $ref: "#/components/schemas/Money" }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+
+    RecordMovementRequest:
+      type: object
+      required: [warehouse_id, product_variant_id, unit_id, quantity]
+      properties:
+        warehouse_id: { type: string, format: uuid }
+        product_variant_id: { type: string, format: uuid }
+        unit_id: { type: string, format: uuid }
+        quantity: { type: string }
+        unit_cost: { type: string, nullable: true }
+        batch_code: { type: string, nullable: true }
+        notes: { type: string }
+
+    StockMovement:
+      type: object
+      description: Append-only — the source of truth for all stock change (docs/database.md).
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        WarehouseID: { type: string, format: uuid }
+        ProductVariantID: { type: string, format: uuid }
+        MovementType: { type: string, description: "OPENING, PURCHASE_RECEIPT, PURCHASE_RETURN, SALE, SALE_RETURN, TRANSFER_IN/OUT, ADJUSTMENT_IN/OUT, ASSEMBLY_IN/OUT, DAMAGE, EXPIRY (brief §11)." }
+        UnitID: { type: string, format: uuid }
+        Quantity: { type: string, description: In the unit the movement was recorded in. }
+        BaseQuantity: { type: string, description: Normalized to the product's base unit of measure. }
+        UnitCost: { type: string, nullable: true }
+        BatchID: { type: string, format: uuid, nullable: true }
+        SerialNumberID: { type: string, format: uuid, nullable: true }
+        ReferenceType: { type: string }
+        ReferenceID: { type: string, format: uuid, nullable: true }
+        Notes: { type: string }
+        CreatedBy: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+
+    StockBalance:
+      type: object
+      description: A materialized projection over StockMovement, app-layer-maintained (docs/adr/0002).
+      properties:
+        OrganisationID: { type: string, format: uuid }
+        WarehouseID: { type: string, format: uuid }
+        ProductVariantID: { type: string, format: uuid }
+        QuantityOnHand: { type: string }
+        QuantityReserved: { type: string }
+        AverageCost: { type: string }
+        UpdatedAt: { type: string, format: date-time }
+
+    StockReservation:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        WarehouseID: { type: string, format: uuid }
+        ProductVariantID: { type: string, format: uuid }
+        Quantity: { type: string }
+        ReferenceType: { type: string }
+        ReferenceID: { type: string, format: uuid }
+        Status: { type: string, enum: [ACTIVE, RELEASED] }
+        CreatedAt: { type: string, format: date-time }
+        ReleasedAt: { type: string, format: date-time, nullable: true }
+
+    StockTransfer:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        FromWarehouseID: { type: string, format: uuid }
+        ToWarehouseID: { type: string, format: uuid }
+        Status: { type: string }
+        Notes: { type: string }
+        CreatedBy: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+
+    StockAdjustment:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        WarehouseID: { type: string, format: uuid }
+        Reason: { type: string }
+        Notes: { type: string }
+        CreatedBy: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+
+    PurchaseDocumentType:
+      type: string
+      enum: [PURCHASE_ORDER, GOODS_RECEIPT, PURCHASE_INVOICE, PURCHASE_RETURN, DEBIT_NOTE]
+
+    PurchaseDocument:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        BranchID: { type: string, format: uuid }
+        WarehouseID: { type: string, format: uuid }
+        SupplierPartyID: { type: string, format: uuid }
+        DocumentType: { $ref: "#/components/schemas/PurchaseDocumentType" }
+        DocumentNumber: { type: string }
+        ReferenceDocumentID: { type: string, format: uuid, nullable: true }
+        Status: { type: string, enum: [DRAFT, FINALIZED, CANCELLED] }
+        SupplierInvoiceNumber: { type: string }
+        SupplierInvoiceDate: { type: string, format: date-time, nullable: true }
+        DocumentDate: { type: string, format: date-time }
+        CurrencyCode: { type: string }
+        Notes: { type: string }
+        CreatedBy: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+        FinalizedAt: { type: string, format: date-time, nullable: true }
+
+    PurchaseDocumentLine:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        PurchaseDocumentID: { type: string, format: uuid }
+        LineNumber: { type: integer }
+        ProductVariantID: { type: string, format: uuid }
+        UnitID: { type: string, format: uuid }
+        Quantity: { type: string }
+        UnitPrice: { $ref: "#/components/schemas/Money" }
+        LineTotal: { $ref: "#/components/schemas/Money" }
+        BatchCode: { type: string }
+        CreatedAt: { type: string, format: date-time }
+
+    TaxRateClassification:
+      type: string
+      enum: [TAXABLE, EXEMPT, NIL_RATED, ZERO_RATED]
+      default: TAXABLE
+
+    TaxRateMaster:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        OrganisationID: { type: string, format: uuid }
+        CountryCode: { type: string }
+        HSNSACCode: { type: string }
+        Classification: { $ref: "#/components/schemas/TaxRateClassification" }
+        GSTRate: { type: string }
+        CessRate: { type: string }
+        ValidFrom: { type: string, format: date-time }
+        ValidTo: { type: string, format: date-time, nullable: true }
+        CreatedAt: { type: string, format: date-time }
+
+    UnmodeledResponse:
+      description: >
+        Placeholder for an endpoint whose exact response shape hasn't had
+        its OpenAPI schema pass yet — see this file's info.description.
+        Read the linked handler for the real fields in the meantime.
+      type: object
+      additionalProperties: true
