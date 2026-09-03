@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: "/purchases", label: "Purchases" },
   { to: "/inventory", label: "Inventory" },
   { to: "/catalogue", label: "Catalogue" },
+  { to: "/pricing", label: "Pricing" },
   { to: "/contacts", label: "Contacts" },
   { to: "/accounting", label: "Accounting" },
   { to: "/gst", label: "GST / Tax" },
@@ -75,13 +76,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     const handle = setTimeout(() => {
       Promise.all([
-        api.get<{ parties: { ID: string; LegalName: string }[] }>(`/contacts/parties?q=${encodeURIComponent(q)}`),
-        api.get<{ products: { ID: string; Name: string }[] }>(`/catalogue/products?q=${encodeURIComponent(q)}`),
+        api.getListField<{ ID: string; LegalName: string }>(`/contacts/parties?q=${encodeURIComponent(q)}`, "parties"),
+        api.getListField<{ ID: string; Name: string }>(`/catalogue/products?q=${encodeURIComponent(q)}`, "products"),
       ])
         .then(([parties, products]) => {
           setSearchResults([
-            ...parties.parties.slice(0, 5).map((p) => ({ kind: "customer" as const, id: p.ID, label: p.LegalName, to: "/contacts" })),
-            ...products.products.slice(0, 5).map((p) => ({ kind: "product" as const, id: p.ID, label: p.Name, to: "/catalogue" })),
+            ...parties.slice(0, 5).map((p) => ({ kind: "customer" as const, id: p.ID, label: p.LegalName, to: "/contacts" })),
+            ...products.slice(0, 5).map((p) => ({ kind: "product" as const, id: p.ID, label: p.Name, to: "/catalogue" })),
           ]);
         })
         .catch(() => setSearchResults([]));
@@ -171,6 +172,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
               <Link to="/catalogue" role="menuitem" onClick={() => setCreateOpen(false)}>
                 New product
+              </Link>
+              <Link to="/pricing" role="menuitem" onClick={() => setCreateOpen(false)}>
+                Set a price
               </Link>
             </div>
           ) : null}

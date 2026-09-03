@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import ui from "../../components/ui.module.css";
 import { api, ApiError } from "../../lib/api-client";
@@ -25,6 +25,13 @@ interface AgeingBucket {
   Total: { amount: string; currency: string };
 }
 
+interface PriceList {
+  ID: string;
+  Name: string;
+  CurrencyCode: string;
+  IsDefault: boolean;
+}
+
 /** The billing counter — brief's "exceptional attention" screen. A sale is
  * a real DRAFT sales_documents row from the moment the customer is picked
  * (not client-side-only state until some later "save"): every add-line
@@ -48,6 +55,22 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
   const [productQuery, setProductQuery] = useState("");
   const [productResults, setProductResults] = useState<BillingLookupResult[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [priceListId, setPriceListId] = useState<string>("");
+
+  const priceLists = useQuery({
+    queryKey: ["price-lists"],
+    queryFn: () => api.getListField<PriceList>("/pricing/price-lists", "price_lists"),
+  });
+
+  // Default to the org's default price list (or its only one) the first
+  // time the list loads, but leave the cashier's own choice alone after
+  // that — this effect only ever fires while priceListId is still unset.
+  useEffect(() => {
+    if (priceListId || !priceLists.data || priceLists.data.length === 0) return;
+    const def = priceLists.data.find((pl) => pl.IsDefault) ?? priceLists.data[0];
+    if (def) setPriceListId(def.ID);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceLists.data]);
 
   useEffect(() => {
     if (!showCustomerResults) return;
@@ -77,7 +100,7 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
 
   const customerSearch = useQuery({
     queryKey: ["party-search", customerQuery],
-    queryFn: () => api.get<{ parties: Party[] }>(`/contacts/parties?q=${encodeURIComponent(customerQuery)}`),
+    queryFn: () => api.getListField<Party>(`/contacts/parties?q=${encodeURIComponent(customerQuery)}`, "parties"),
     enabled: customerQuery.length >= 2 && !documentId,
   });
 
@@ -95,13 +118,14 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
     const handle = setTimeout(() => {
       const params = new URLSearchParams({ q: productQuery });
       if (org.warehouse) params.set("warehouse_id", org.warehouse.ID);
+      if (priceListId) params.set("price_list_id", priceListId);
       api
-        .get<{ results: BillingLookupResult[] }>(`/sales/billing-lookup?${params.toString()}`)
-        .then((res) => setProductResults(res.results))
+        .get<{ results: BillingLookupResult[] | null }>(`/sales/billing-lookup?${params.toString()}`)
+        .then((res) => setProductResults(res.results ?? []))
         .catch(() => setProductResults([]));
     }, 150);
     return () => clearTimeout(handle);
-  }, [productQuery, documentId, org.warehouse]);
+  }, [productQuery, documentId, org.warehouse, priceListId]);
 
   const startSale = useMutation({
     mutationFn: async () => {
@@ -196,6 +220,23 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
             </select>
           </div>
 
+          <div className={ui.field}>
+            <label htmlFor="price-list-select">Price list</label>
+            {priceLists.data && priceLists.data.length > 0 ? (
+              <select id="price-list-select" className={ui.select} value={priceListId} onChange={(e) => setPriceListId(e.target.value)}>
+                {priceLists.data.map((pl) => (
+                  <option key={pl.ID} value={pl.ID}>
+                    {pl.Name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Link to="/pricing" className={ui.btnSecondary}>
+                Set up pricing
+              </Link>
+            )}
+          </div>
+
           <div className={`${ui.field} ${styles.customerField}`}>
             <label htmlFor="customer-search">Customer</label>
             {customer && documentId ? (
@@ -229,9 +270,9 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
                   onFocus={() => setShowCustomerResults(true)}
                   autoComplete="off"
                 />
-                {showCustomerResults && customerSearch.data?.parties.length ? (
+                {showCustomerResults && customerSearch.data?.length ? (
                   <ul className={styles.dropdown} role="menu" aria-label="Customer results">
-                    {customerSearch.data.parties.map((p) => (
+                    {customerSearch.data.map((p) => (
                       <li key={p.ID}>
                         <button
                           type="button"

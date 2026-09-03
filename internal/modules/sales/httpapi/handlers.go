@@ -14,6 +14,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	ewaybillapp "billing-platform/internal/modules/ewaybill/app"
+	inventorydomain "billing-platform/internal/modules/inventory/domain"
 	"billing-platform/internal/modules/sales/app"
 	"billing-platform/internal/modules/sales/domain"
 	"billing-platform/internal/modules/sales/printing"
@@ -79,8 +80,14 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, httpx.NewConflict("DOCUMENT_NOT_FINALIZED", "Only a FINALIZED document can be converted."))
 	case errors.Is(err, domain.ErrEmptyDocument):
 		httpx.WriteError(w, r, httpx.NewConflict("EMPTY_DOCUMENT", "A document needs at least one line before it can be finalized."))
+	case errors.Is(err, domain.ErrZeroValueDocument):
+		httpx.WriteError(w, r, httpx.NewConflict("ZERO_VALUE_DOCUMENT", "This document's total is ₹0.00. Check that every item has a price, then try again."))
 	case errors.Is(err, domain.ErrDuplicateNumber):
 		httpx.WriteError(w, r, httpx.NewConflict("DUPLICATE_NUMBER", "That document number is already in use."))
+	case errors.Is(err, taxdomain.ErrRateNotConfigured):
+		httpx.WriteError(w, r, httpx.NewBadRequest("TAX_RATE_NOT_CONFIGURED", "One or more items on this document don't have a GST rate set up for their HSN/SAC code yet. Add a tax rate for it under GST / Tax, then try again."))
+	case errors.Is(err, inventorydomain.ErrInsufficientStock):
+		httpx.WriteError(w, r, httpx.NewConflict("INSUFFICIENT_STOCK", "There isn't enough stock on hand for one or more items on this document. Record a purchase or stock adjustment first, then try again."))
 	case errors.As(err, &forbidden):
 		httpx.WriteError(w, r, httpx.NewForbidden("FORBIDDEN", "You do not have permission to perform this action."))
 	default:

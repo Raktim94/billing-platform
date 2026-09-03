@@ -46,7 +46,7 @@ export function PurchasesPage() {
 
   const documents = useQuery({
     queryKey: ["purchase-documents"],
-    queryFn: () => api.get<{ documents: PurchaseDocument[] }>("/purchases/documents"),
+    queryFn: () => api.getListField<PurchaseDocument>("/purchases/documents", "documents"),
   });
 
   const activeDoc = useQuery({
@@ -57,7 +57,7 @@ export function PurchasesPage() {
 
   const supplierSearch = useQuery({
     queryKey: ["supplier-search", supplierQuery],
-    queryFn: () => api.get<{ parties: Party[] }>(`/contacts/parties?q=${encodeURIComponent(supplierQuery)}`),
+    queryFn: () => api.getListField<Party>(`/contacts/parties?q=${encodeURIComponent(supplierQuery)}`, "parties"),
     enabled: supplierQuery.length >= 2,
   });
 
@@ -85,14 +85,14 @@ export function PurchasesPage() {
       setProductResults([]);
       return;
     }
-    const res = await api.get<{ products: Product[] }>(`/catalogue/products?q=${encodeURIComponent(q)}`);
-    setProductResults(res.products);
+    const res = await api.get<{ products: Product[] | null }>(`/catalogue/products?q=${encodeURIComponent(q)}`);
+    setProductResults(res.products ?? []);
   }
 
   const addLine = useMutation({
     mutationFn: async (product: Product) => {
-      const variants = await api.get<{ variants: ProductVariant[] }>(`/catalogue/products/${product.ID}/variants`);
-      const variant = variants.variants[0];
+      const variants = await api.getListField<ProductVariant>(`/catalogue/products/${product.ID}/variants`, "variants");
+      const variant = variants[0];
       if (!variant) throw new Error("This product has no variant yet.");
       return api.post(`/purchases/documents/${activeDocId}/lines`, {
         product_variant_id: variant.ID,
@@ -162,9 +162,9 @@ export function PurchasesPage() {
                     onChange={(e) => setSupplierQuery(e.target.value)}
                     placeholder="Search supplier…"
                   />
-                  {supplierSearch.data?.parties.length ? (
+                  {supplierSearch.data?.length ? (
                     <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                      {supplierSearch.data.parties.map((p) => (
+                      {supplierSearch.data.map((p) => (
                         <li key={p.ID}>
                           <button type="button" className={ui.btnSecondary} style={{ margin: "4px 4px 0 0" }} onClick={() => setSupplier(p)}>
                             {p.LegalName}
@@ -288,7 +288,7 @@ export function PurchasesPage() {
           </p>
         ) : documents.isPending ? (
           <div className={layout.skeleton} style={{ height: 200 }} aria-hidden="true" />
-        ) : documents.data.documents.length === 0 ? (
+        ) : documents.data.length === 0 ? (
           <p className={layout.emptyState}>No purchases yet.</p>
         ) : (
           <div className={ui.tableScroll}>
@@ -302,7 +302,7 @@ export function PurchasesPage() {
                 </tr>
               </thead>
               <tbody>
-                {documents.data.documents.map((d) => (
+                {documents.data.map((d) => (
                   <tr key={d.ID} onClick={() => setActiveDocId(d.ID)} style={{ cursor: "pointer" }}>
                     <td>{d.DocumentNumber || "(draft)"}</td>
                     <td>{d.DocumentType}</td>

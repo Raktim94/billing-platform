@@ -45,16 +45,16 @@ export function useOrgContext() {
   });
   const legalEntities = useQuery({
     queryKey: ["legal-entities"],
-    queryFn: () => api.get<{ legal_entities: LegalEntity[] }>("/legal-entities"),
+    queryFn: () => api.getListField<LegalEntity>("/legal-entities", "legal_entities"),
   });
   const branches = useQuery({
     queryKey: ["branches"],
-    queryFn: () => api.get<{ branches: Branch[] }>("/branches"),
+    queryFn: () => api.getListField<Branch>("/branches", "branches"),
   });
-  const firstBranch = branches.data?.branches[0];
+  const firstBranch = branches.data?.[0];
   const warehouses = useQuery({
     queryKey: ["warehouses", firstBranch?.ID],
-    queryFn: () => api.get<{ warehouses: Warehouse[] }>(`/branches/${firstBranch?.ID}/warehouses`),
+    queryFn: () => api.getListField<Warehouse>(`/branches/${firstBranch?.ID}/warehouses`, "warehouses"),
     enabled: !!firstBranch,
   });
 
@@ -65,8 +65,8 @@ export function useOrgContext() {
     isPending,
     isError,
     organisation: organisation.data,
-    legalEntity: legalEntities.data?.legal_entities[0],
+    legalEntity: legalEntities.data?.[0],
     branch: firstBranch,
-    warehouse: warehouses.data?.warehouses[0],
+    warehouse: warehouses.data?.[0],
   };
 }

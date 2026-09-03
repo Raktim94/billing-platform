@@ -266,7 +266,7 @@ func (s *Service) FinalizeDocument(ctx context.Context, principal permissions.Pr
 			return domain.ErrEmptyDocument
 		}
 
-		if domain.StockAffecting(doc.DocumentType) {
+		if domain.StockAffecting(doc.DocumentType, doc.ReferenceDocumentID) {
 			movementType := inventorydomain.MovementPurchaseReceipt
 			if doc.DocumentType == domain.DocPurchaseReturn {
 				movementType = inventorydomain.MovementPurchaseReturn

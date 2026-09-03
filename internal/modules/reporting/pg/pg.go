@@ -97,14 +97,15 @@ func (b *whereBuilder) sql() string {
 // groupExpr maps a validated GroupDimension to a fixed SQL expression and
 // join, for the sales/purchase summary queries. tablePrefix is "sd"/"sdl"
 // for sales or "pd"/"pdl" for purchases (both document families share the
-// same header/line shape).
-func groupExpr(g domain.GroupDimension, docAlias, lineAlias, partyJoinAlias string) (selectExpr, groupByExpr, join string) {
+// same line shape, but sales_documents' date column is issue_date while
+// purchase_documents' is document_date — dateColumn carries that).
+func groupExpr(g domain.GroupDimension, docAlias, lineAlias, partyJoinAlias, dateColumn string) (selectExpr, groupByExpr, join string) {
 	switch g {
 	case domain.GroupByDay:
-		e := docAlias + ".issue_date::text"
+		e := docAlias + "." + dateColumn + "::text"
 		return e, e, ""
 	case domain.GroupByMonth:
-		e := "to_char(" + docAlias + ".issue_date, 'YYYY-MM')"
+		e := "to_char(" + docAlias + "." + dateColumn + ", 'YYYY-MM')"
 		return e, e, ""
 	case domain.GroupByCustomer, domain.GroupBySupplier:
 		e := "COALESCE(NULLIF(" + partyJoinAlias + ".trade_name, ''), " + partyJoinAlias + ".legal_name)"
@@ -124,7 +125,7 @@ func groupExpr(g domain.GroupDimension, docAlias, lineAlias, partyJoinAlias stri
 	default:
 		// Unreachable if the caller validated via domain.ValidGroupDimension
 		// first (app layer does, before this method is ever called).
-		e := docAlias + ".issue_date::text"
+		e := docAlias + "." + dateColumn + "::text"
 		return e, e, ""
 	}
 }
@@ -134,7 +135,7 @@ func inr(d decimal.Decimal) money.Money { return money.MustNew(d, "INR") }
 // --- Sales ---
 
 func (r *Repo) SalesSummary(ctx context.Context, f domain.Filter, group domain.GroupDimension) ([]domain.SummaryRow, error) {
-	selectExpr, groupByExpr, join := groupExpr(group, "sd", "sdl", "p")
+	selectExpr, groupByExpr, join := groupExpr(group, "sd", "sdl", "p", "issue_date")
 	needsLineJoin := group == domain.GroupByProduct || group == domain.GroupByCategory
 	needsPartyJoin := group == domain.GroupByCustomer
 
@@ -267,7 +268,7 @@ func (r *Repo) GrossProfit(ctx context.Context, f domain.Filter) ([]domain.Gross
 // --- Purchases ---
 
 func (r *Repo) PurchaseSummary(ctx context.Context, f domain.Filter, group domain.GroupDimension) ([]domain.SummaryRow, error) {
-	selectExpr, groupByExpr, join := groupExpr(group, "pd", "pdl", "p")
+	selectExpr, groupByExpr, join := groupExpr(group, "pd", "pdl", "p", "document_date")
 	needsLineJoin := group == domain.GroupByProduct || group == domain.GroupByCategory
 	needsPartyJoin := group == domain.GroupBySupplier
 

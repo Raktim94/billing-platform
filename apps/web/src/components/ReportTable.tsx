@@ -30,7 +30,9 @@ export function ReportTable({ path, emptyLabel }: { path: string; emptyLabel?: s
       </p>
     );
   }
-  if (query.data.rows.length === 0) {
+  const headers = query.data.headers ?? [];
+  const rows = query.data.rows ?? [];
+  if (rows.length === 0) {
     return <p className={layout.emptyState}>{emptyLabel ?? "Nothing to show yet."}</p>;
   }
   return (
@@ -38,13 +40,13 @@ export function ReportTable({ path, emptyLabel }: { path: string; emptyLabel?: s
       <table className={ui.table}>
         <thead>
           <tr>
-            {query.data.headers.map((h, i) => (
+            {headers.map((h, i) => (
               <th key={i} scope="col">{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {query.data.rows.map((row, i) => (
+          {rows.map((row, i) => (
             <tr key={i}>
               {row.map((cell, j) => (
                 <td key={j} className={j > 0 ? "num" : undefined}>

@@ -428,6 +428,9 @@ func (s *Service) FinalizeDocument(ctx context.Context, principal permissions.Pr
 		if err != nil {
 			return fmt.Errorf("calculating tax: %w", err)
 		}
+		if domain.RevenueAffecting(doc.DocumentType) && !taxDoc.GrandTotal.Decimal().IsPositive() {
+			return domain.ErrZeroValueDocument
+		}
 
 		if domain.StockAffecting(doc.DocumentType) {
 			movementType := inventorydomain.MovementSale

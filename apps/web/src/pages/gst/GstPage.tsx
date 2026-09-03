@@ -85,7 +85,7 @@ function VehiclesSection() {
   const queryClient = useQueryClient();
   const [reg, setReg] = useState("");
   const [nickname, setNickname] = useState("");
-  const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: () => api.get<{ vehicles: Vehicle[] }>("/logistics/vehicles") });
+  const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: () => api.getListField<Vehicle>("/logistics/vehicles", "vehicles") });
   const createVehicle = useMutation({
     mutationFn: () => api.post("/logistics/vehicles", { registration_number: reg, nickname, vehicle_type: "TRUCK", default_transport_mode: "ROAD" }),
     onSuccess: () => {
@@ -111,9 +111,9 @@ function VehiclesSection() {
           Add vehicle
         </button>
       </div>
-      {vehicles.data?.vehicles.length ? (
+      {vehicles.data?.length ? (
         <ul style={{ marginTop: 12 }}>
-          {vehicles.data.vehicles.map((v) => (
+          {vehicles.data.map((v) => (
             <li key={v.ID}>
               {v.RegistrationNumber} {v.Nickname ? `(${v.Nickname})` : ""}
             </li>
@@ -130,7 +130,7 @@ function TransportersSection() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [gstin, setGstin] = useState("");
-  const transporters = useQuery({ queryKey: ["transporters"], queryFn: () => api.get<{ transporters: Transporter[] }>("/logistics/transporters") });
+  const transporters = useQuery({ queryKey: ["transporters"], queryFn: () => api.getListField<Transporter>("/logistics/transporters", "transporters") });
   const createTransporter = useMutation({
     mutationFn: () => api.post("/logistics/transporters", { name, transporter_id: "", gstin, phone: "", address: "", default_transport_mode: "ROAD" }),
     onSuccess: () => {
@@ -156,9 +156,9 @@ function TransportersSection() {
           Add transporter
         </button>
       </div>
-      {transporters.data?.transporters.length ? (
+      {transporters.data?.length ? (
         <ul style={{ marginTop: 12 }}>
-          {transporters.data.transporters.map((t) => (
+          {transporters.data.map((t) => (
             <li key={t.ID}>{t.Name}</li>
           ))}
         </ul>
@@ -178,7 +178,7 @@ function TaxRatesSection() {
 
   const rates = useQuery({
     queryKey: ["tax-rates", lookupHsn],
-    queryFn: () => api.get<{ tax_rates: TaxRate[] }>(`/gst/tax-rates/${encodeURIComponent(lookupHsn)}`),
+    queryFn: () => api.getListField<TaxRate>(`/gst/tax-rates/${encodeURIComponent(lookupHsn)}`, "tax_rates"),
     enabled: lookupHsn.length > 0,
   });
 
@@ -199,9 +199,9 @@ function TaxRatesSection() {
         <input id="hsn-lookup" className={ui.input} value={lookupHsn} onChange={(e) => setLookupHsn(e.target.value)} />
       </div>
       {lookupHsn ? (
-        rates.data?.tax_rates.length ? (
+        rates.data?.length ? (
           <ul style={{ marginBottom: 16 }}>
-            {rates.data.tax_rates.map((r, i) => (
+            {rates.data.map((r, i) => (
               <li key={i}>
                 GST {r.GSTRate}% (from {new Date(r.ValidFrom).toLocaleDateString()})
               </li>

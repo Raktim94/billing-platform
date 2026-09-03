@@ -15,7 +15,7 @@ function statusTone(status: SalesDocument["Status"]) {
 export function SalesListPage() {
   const documents = useQuery({
     queryKey: ["sales-documents"],
-    queryFn: () => api.get<{ documents: SalesDocument[] }>("/sales/documents"),
+    queryFn: () => api.getListField<SalesDocument>("/sales/documents", "documents"),
   });
 
   return (
@@ -37,7 +37,7 @@ export function SalesListPage() {
           </p>
         ) : documents.isPending ? (
           <div className={layout.skeleton} style={{ height: 240 }} aria-hidden="true" />
-        ) : documents.data.documents.length === 0 ? (
+        ) : documents.data.length === 0 ? (
           <p className={layout.emptyState}>No sales yet — start your first sale above.</p>
         ) : (
           <div className={ui.tableScroll}>
@@ -52,7 +52,7 @@ export function SalesListPage() {
                 </tr>
               </thead>
               <tbody>
-                {documents.data.documents.map((d) => (
+                {documents.data.map((d) => (
                   <tr key={d.ID}>
                     <td>
                       <Link

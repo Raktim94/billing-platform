@@ -118,6 +118,101 @@ func TestPurchases_GoodsReceipt_FinalizePostsStockMovement(t *testing.T) {
 	}
 }
 
+// TestPurchases_StandaloneInvoice_FinalizePostsStockMovement verifies the
+// fix for a production-blocking gap: the shipped app's only
+// purchase-creation UI (apps/web PurchasesPage) creates PURCHASE_INVOICE
+// documents with no GRN step, so a standalone invoice (no
+// ReferenceDocumentID) must itself put stock on the shelf — otherwise no
+// UI-reachable path ever increases stock_balances and every subsequent
+// sale fails with "insufficient stock" (see domain.StockAffecting).
+func TestPurchases_StandaloneInvoice_FinalizePostsStockMovement(t *testing.T) {
+	ctx := context.Background()
+	inventorySvc := newTestInventoryService(t)
+	purchasesSvc := newTestPurchasesService(t, inventorySvc)
+	fx := setupPurchasesFixture(t, ctx)
+
+	doc, err := purchasesSvc.CreateDocument(ctx, fx.Principal, purchasesapp.CreateDocumentParams{
+		BranchID: fx.BranchID, WarehouseID: fx.WarehouseID, SupplierPartyID: fx.SupplierPartyID,
+		DocumentType: purchasesdomain.DocPurchaseInvoice, CurrencyCode: "INR",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+	if _, err := purchasesSvc.AddLine(ctx, fx.Principal, purchasesapp.AddLineParams{
+		DocumentID: doc.ID, ProductVariantID: fx.VariantID, UnitID: fx.PCS,
+		Quantity: mustDecimal(t, "50"), UnitPrice: mustDecimal(t, "20"),
+	}); err != nil {
+		t.Fatalf("AddLine: %v", err)
+	}
+	if _, err := purchasesSvc.FinalizeDocument(ctx, fx.Principal, doc.ID); err != nil {
+		t.Fatalf("FinalizeDocument: %v", err)
+	}
+
+	bal, err := inventorySvc.GetBalance(ctx, fx.Principal, fx.WarehouseID, fx.VariantID)
+	if err != nil {
+		t.Fatalf("GetBalance: %v", err)
+	}
+	if !bal.QuantityOnHand.Equal(mustDecimal(t, "50")) {
+		t.Fatalf("QuantityOnHand after standalone invoice finalize = %s, want 50", bal.QuantityOnHand)
+	}
+	if !bal.AverageCost.Equal(mustDecimal(t, "20")) {
+		t.Fatalf("AverageCost after standalone invoice finalize = %s, want 20", bal.AverageCost)
+	}
+}
+
+// TestPurchases_InvoiceReferencingGoodsReceipt_FinalizeDoesNotDoubleCountStock
+// is the double-counting guard for a future GRN-then-invoice flow: once a
+// GOODS_RECEIPT has already put stock on the shelf, an invoice that bills
+// against it (ReferenceDocumentID set) must not post stock again.
+func TestPurchases_InvoiceReferencingGoodsReceipt_FinalizeDoesNotDoubleCountStock(t *testing.T) {
+	ctx := context.Background()
+	inventorySvc := newTestInventoryService(t)
+	purchasesSvc := newTestPurchasesService(t, inventorySvc)
+	fx := setupPurchasesFixture(t, ctx)
+
+	grn, err := purchasesSvc.CreateDocument(ctx, fx.Principal, purchasesapp.CreateDocumentParams{
+		BranchID: fx.BranchID, WarehouseID: fx.WarehouseID, SupplierPartyID: fx.SupplierPartyID,
+		DocumentType: purchasesdomain.DocGoodsReceipt, CurrencyCode: "INR",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument(GRN): %v", err)
+	}
+	if _, err := purchasesSvc.AddLine(ctx, fx.Principal, purchasesapp.AddLineParams{
+		DocumentID: grn.ID, ProductVariantID: fx.VariantID, UnitID: fx.PCS,
+		Quantity: mustDecimal(t, "50"), UnitPrice: mustDecimal(t, "20"),
+	}); err != nil {
+		t.Fatalf("AddLine(GRN): %v", err)
+	}
+	if _, err := purchasesSvc.FinalizeDocument(ctx, fx.Principal, grn.ID); err != nil {
+		t.Fatalf("FinalizeDocument(GRN): %v", err)
+	}
+
+	invoice, err := purchasesSvc.CreateDocument(ctx, fx.Principal, purchasesapp.CreateDocumentParams{
+		BranchID: fx.BranchID, WarehouseID: fx.WarehouseID, SupplierPartyID: fx.SupplierPartyID,
+		DocumentType: purchasesdomain.DocPurchaseInvoice, CurrencyCode: "INR", ReferenceDocumentID: &grn.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument(invoice): %v", err)
+	}
+	if _, err := purchasesSvc.AddLine(ctx, fx.Principal, purchasesapp.AddLineParams{
+		DocumentID: invoice.ID, ProductVariantID: fx.VariantID, UnitID: fx.PCS,
+		Quantity: mustDecimal(t, "50"), UnitPrice: mustDecimal(t, "20"),
+	}); err != nil {
+		t.Fatalf("AddLine(invoice): %v", err)
+	}
+	if _, err := purchasesSvc.FinalizeDocument(ctx, fx.Principal, invoice.ID); err != nil {
+		t.Fatalf("FinalizeDocument(invoice): %v", err)
+	}
+
+	bal, err := inventorySvc.GetBalance(ctx, fx.Principal, fx.WarehouseID, fx.VariantID)
+	if err != nil {
+		t.Fatalf("GetBalance: %v", err)
+	}
+	if !bal.QuantityOnHand.Equal(mustDecimal(t, "50")) {
+		t.Fatalf("QuantityOnHand after GRN + referencing invoice = %s, want 50 (invoice must not double-count the GRN's receipt)", bal.QuantityOnHand)
+	}
+}
+
 // TestPurchases_PurchaseOrder_FinalizeDoesNotPostStock verifies
 // domain.StockAffecting's split: a PURCHASE_ORDER is a commitment, not a
 // receipt, so finalizing one must not move any stock (only GOODS_RECEIPT

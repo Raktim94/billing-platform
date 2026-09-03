@@ -34,7 +34,7 @@ func TestGroupExpr_OnlyEmitsFixedLiteralExpressions(t *testing.T) {
 		{domain.GroupByWarehouse, "wh.name", "warehouses"},
 	}
 	for _, c := range cases {
-		selectExpr, groupByExpr, join := groupExpr(c.dim, "sd", "sdl", "p")
+		selectExpr, groupByExpr, join := groupExpr(c.dim, "sd", "sdl", "p", "issue_date")
 		if !strings.Contains(selectExpr, c.wantSelectHas) {
 			t.Errorf("%s: selectExpr = %q, want substring %q", c.dim, selectExpr, c.wantSelectHas)
 		}

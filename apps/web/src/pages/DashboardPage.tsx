@@ -108,12 +108,12 @@ export function DashboardPage() {
           </div>
         ) : trend.isPending ? (
           <div className={styles.skeleton} style={{ height: 260 }} aria-hidden="true" />
-        ) : trend.data.rows.length === 0 ? (
+        ) : (trend.data.rows ?? []).length === 0 ? (
           <p className={styles.emptyState}>
             No sales recorded yet. Once you create and finalize an invoice, its trend will show up here.
           </p>
         ) : (
-          <SalesTrendChart rows={trend.data.rows} dark={theme === "dark"} />
+          <SalesTrendChart rows={trend.data.rows ?? []} dark={theme === "dark"} />
         )}
       </div>
     </div>

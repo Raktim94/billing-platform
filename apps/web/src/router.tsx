@@ -13,6 +13,7 @@ import {
   DashboardPage,
   GstPage,
   InventoryPage,
+  PricingPage,
   PurchasesPage,
   ReportsPage,
   SalesDetailPage,
@@ -140,6 +141,7 @@ const salesDetailRoute = createRoute({
 const purchasesRoute = realRoute("/purchases", PurchasesPage);
 const inventoryRoute = realRoute("/inventory", InventoryPage);
 const catalogueRoute = realRoute("/catalogue", CataloguePage);
+const pricingRoute = realRoute("/pricing", PricingPage);
 const contactsRoute = realRoute("/contacts", ContactsPage);
 const accountingRoute = realRoute("/accounting", AccountingPage);
 const gstRoute = realRoute("/gst", GstPage);
@@ -163,6 +165,7 @@ const routeTree = rootRoute.addChildren([
   purchasesRoute,
   inventoryRoute,
   catalogueRoute,
+  pricingRoute,
   contactsRoute,
   accountingRoute,
   gstRoute,

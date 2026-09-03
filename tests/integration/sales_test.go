@@ -5,6 +5,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -259,6 +260,46 @@ func TestSales_Finalize_InsufficientStockRejectsAtomically(t *testing.T) {
 	}
 	if !bal.QuantityOnHand.Equal(mustDecimal(t, "100")) {
 		t.Fatalf("QuantityOnHand after failed finalize = %s, want 100 (unchanged)", bal.QuantityOnHand)
+	}
+}
+
+// TestSales_Finalize_ZeroValueDocumentRejectedWithClearError verifies the
+// fix for a confusing crash: a tax invoice whose lines all price out to
+// ₹0.00 (e.g. a product added with no configured selling price — the
+// billing UI silently defaults an unpriced line to "0") must be rejected
+// with a clear, specific error before reaching accounting's double-entry
+// post, which would otherwise fail deep inside with an opaque
+// "must be either a debit or a credit, not both/neither" 500.
+func TestSales_Finalize_ZeroValueDocumentRejectedWithClearError(t *testing.T) {
+	ctx := context.Background()
+	salesSvc, _, _, _ := newTestSalesServices(t)
+	fx := setupSalesFixture(t, ctx)
+
+	doc, err := salesSvc.CreateDocument(ctx, fx.Principal, salesapp.CreateDocumentParams{
+		LegalEntityID: fx.LegalEntityID, BranchID: fx.BranchID, WarehouseID: fx.WarehouseID, CustomerPartyID: fx.CustomerID,
+		DocumentType: salesdomain.DocTaxInvoice, PlaceOfSupplyStateCode: "27", CurrencyCode: "INR", BaseCurrencyCode: "INR",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+	if _, err := salesSvc.AddLine(ctx, fx.Principal, salesapp.AddLineParams{
+		DocumentID: doc.ID, ProductVariantID: fx.VariantID, UnitID: fx.PCS,
+		Quantity: mustDecimal(t, "1"), UnitPrice: mustDecimal(t, "0"),
+	}); err != nil {
+		t.Fatalf("AddLine: %v", err)
+	}
+
+	_, err = salesSvc.FinalizeDocument(ctx, fx.Principal, doc.ID)
+	if !errors.Is(err, salesdomain.ErrZeroValueDocument) {
+		t.Fatalf("FinalizeDocument error = %v, want ErrZeroValueDocument", err)
+	}
+
+	refetched, _, err := salesSvc.GetDocument(ctx, fx.Principal, doc.ID)
+	if err != nil {
+		t.Fatalf("GetDocument: %v", err)
+	}
+	if refetched.Status != salesdomain.StatusDraft {
+		t.Fatalf("status after rejected finalize = %s, want DRAFT (atomicity broken)", refetched.Status)
 	}
 }
 

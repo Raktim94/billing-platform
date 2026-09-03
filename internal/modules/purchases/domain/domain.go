@@ -34,14 +34,23 @@ func ValidDocumentType(t DocumentType) bool {
 	}
 }
 
-// StockAffecting reports whether finalizing a document of this type
-// should post stock_movements. GOODS_RECEIPT increases stock;
-// PURCHASE_RETURN decreases it. A PURCHASE_ORDER is a commitment, not a
-// receipt; PURCHASE_INVOICE/DEBIT_NOTE are billing documents whose
-// accounting effect is Stage 6 scope — neither moves physical stock on
-// their own.
-func StockAffecting(t DocumentType) bool {
-	return t == DocGoodsReceipt || t == DocPurchaseReturn
+// StockAffecting reports whether finalizing a document should post
+// stock_movements. GOODS_RECEIPT and PURCHASE_RETURN always do.
+// PURCHASE_INVOICE does too, unless referenceDocumentID is set — i.e. it
+// is billing against goods already received through a separate
+// GOODS_RECEIPT, so posting stock again here would double-count what the
+// GRN already recorded (docs/adr/0003-accounting-integration-point.md
+// §3's original 3-way-match reasoning). The shipped app's only
+// purchase-creation screen (apps/web PurchasesPage) has no GRN step and
+// always creates a standalone PURCHASE_INVOICE with no reference — for
+// that real, reachable flow this means simply "the purchase you just
+// recorded puts stock on the shelf." A PURCHASE_ORDER is a commitment,
+// not a receipt, and never affects stock.
+func StockAffecting(t DocumentType, referenceDocumentID *uuid.UUID) bool {
+	if t == DocGoodsReceipt || t == DocPurchaseReturn {
+		return true
+	}
+	return t == DocPurchaseInvoice && referenceDocumentID == nil
 }
 
 // AccountingAffecting reports whether finalizing a document of this type

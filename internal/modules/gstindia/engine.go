@@ -103,7 +103,7 @@ func (e *Engine) calculateLine(
 ) (taxdomain.TaxLineResult, error) {
 	rate, err := e.rates.Resolve(ctx, orgID, "IN", line.HSNSACCode, documentDate)
 	if err != nil {
-		return taxdomain.TaxLineResult{}, fmt.Errorf("%w (hsn_sac_code=%q)", gstdomain.ErrRateNotConfigured, line.HSNSACCode)
+		return taxdomain.TaxLineResult{}, fmt.Errorf("%w (hsn_sac_code=%q): %w", gstdomain.ErrRateNotConfigured, line.HSNSACCode, taxdomain.ErrRateNotConfigured)
 	}
 
 	currency := line.Amount.Currency()

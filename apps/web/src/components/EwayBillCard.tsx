@@ -84,12 +84,12 @@ export function EwayBillCard({ documentId }: { documentId: string }) {
   // retyping a registration number from memory every time.
   const vehicles = useQuery({
     queryKey: ["logistics-vehicles"],
-    queryFn: () => api.get<{ vehicles: Vehicle[] }>("/logistics/vehicles"),
+    queryFn: () => api.getListField<Vehicle>("/logistics/vehicles", "vehicles"),
     staleTime: 60_000,
   });
   const transporters = useQuery({
     queryKey: ["logistics-transporters"],
-    queryFn: () => api.get<{ transporters: Transporter[] }>("/logistics/transporters"),
+    queryFn: () => api.getListField<Transporter>("/logistics/transporters", "transporters"),
     staleTime: 60_000,
   });
 
@@ -249,7 +249,7 @@ export function EwayBillCard({ documentId }: { documentId: string }) {
               autoComplete="off"
             />
             <datalist id="ewb-vehicle-options">
-              {vehicles.data?.vehicles.map((v) => (
+              {vehicles.data?.map((v) => (
                 <option key={v.ID} value={v.RegistrationNumber}>
                   {v.Nickname ? `${v.RegistrationNumber} (${v.Nickname})` : v.RegistrationNumber}
                 </option>
@@ -267,7 +267,7 @@ export function EwayBillCard({ documentId }: { documentId: string }) {
               autoComplete="off"
             />
             <datalist id="ewb-transporter-options">
-              {transporters.data?.transporters.map((t) => (
+              {transporters.data?.map((t) => (
                 <option key={t.ID} value={t.Name} />
               ))}
             </datalist>

@@ -32,7 +32,11 @@ export function SalesDetailPage({ id }: { id: string }) {
     );
   }
 
-  const { document, lines } = doc.data;
+  const { document } = doc.data;
+  // Go marshals a nil slice as JSON null, not [] — defensive even though
+  // a finalized document always has >=1 line in practice (see
+  // apps/web/src/lib/api-client.ts's getListField doc comment).
+  const lines = doc.data.lines ?? [];
 
   return (
     <div className={layout.page}>
