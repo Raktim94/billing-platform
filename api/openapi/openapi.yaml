@@ -1545,7 +1545,170 @@ paths:
       responses:
         "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/BankAccount" } } } }
 
+  # ============================================================
+  # REPORTING — dashboard + every /reports/* endpoint. Every listing
+  # endpoint (all but /reports/dashboard) shares one response shape
+  # (ReportTable) and one ?format= query param (internal/platform/export)
+  # — the headers differ per report, documented per operation below.
+  # Verified against internal/modules/reporting/httpapi/{handlers,reports}.go.
+  # ============================================================
+  /reports/dashboard:
+    get:
+      tags: [Reporting]
+      summary: The 8-card dashboard summary (brief §23) — live indexed queries, not a materialized table (docs/adr/0004).
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardSummary" } } } }
+
+  /reports/sales/summary:
+    get:
+      tags: [Reporting]
+      summary: "Sales summary. Headers: Key, Documents, Taxable, Tax, Grand Total."
+      parameters:
+        - $ref: "#/components/parameters/ReportFilterFrom"
+        - $ref: "#/components/parameters/ReportFilterTo"
+        - $ref: "#/components/parameters/ReportFormat"
+        - name: group_by
+          in: query
+          schema: { type: string, enum: [day, month, customer, product, category, salesperson, branch, warehouse], default: day }
+      responses:
+        "200": { $ref: "#/components/responses/ReportTableOK" }
+        "400":
+          description: INVALID_GROUP_BY.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /reports/sales/invoices:
+    get:
+      tags: [Reporting]
+      summary: "Sales invoice detail. Headers: Document Number, Type, Customer, Issue Date, Status, Grand Total."
+      parameters: [{ $ref: "#/components/parameters/ReportFilterFrom" }, { $ref: "#/components/parameters/ReportFilterTo" }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/sales/gross-profit:
+    get:
+      tags: [Reporting]
+      summary: >
+        Gross profit by product. Headers: Product, SKU, Qty Sold, Revenue,
+        Approx COGS, Approx Profit. COGS is approximate — current
+        average_cost, not the historical cost at the moment of sale (a
+        known, documented limitation, docs/TODO.md Stage 7).
+      parameters: [{ $ref: "#/components/parameters/ReportFilterFrom" }, { $ref: "#/components/parameters/ReportFilterTo" }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/purchases/summary:
+    get:
+      tags: [Reporting]
+      summary: "Purchase summary. Headers: Key, Documents, Total. No taxable/tax breakdown yet — purchases isn't wired through the tax engine (known gap)."
+      parameters:
+        - $ref: "#/components/parameters/ReportFilterFrom"
+        - $ref: "#/components/parameters/ReportFilterTo"
+        - $ref: "#/components/parameters/ReportFormat"
+        - { name: group_by, in: query, schema: { type: string, enum: [day, month, supplier, product, category, branch, warehouse], default: day } }
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/purchases/documents:
+    get:
+      tags: [Reporting]
+      summary: "Purchase document detail. Headers: Document Number, Type, Supplier, Date, Status, Total."
+      parameters: [{ $ref: "#/components/parameters/ReportFilterFrom" }, { $ref: "#/components/parameters/ReportFilterTo" }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/inventory/valuation:
+    get:
+      tags: [Reporting]
+      summary: "Stock valuation. Headers: Warehouse, Product, SKU, Qty On Hand, Avg Cost, Total Value."
+      parameters: [{ name: warehouse_id, in: query, schema: { type: string, format: uuid } }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/inventory/low-stock:
+    get:
+      tags: [Reporting]
+      summary: "Low stock. Headers: Warehouse, Product, SKU, Qty On Hand, Reorder Level."
+      parameters: [{ name: warehouse_id, in: query, schema: { type: string, format: uuid } }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/inventory/movements:
+    get:
+      tags: [Reporting]
+      summary: "Stock movements. Headers: Date, Warehouse, Product, SKU, Type, Quantity, Reference."
+      parameters: [{ name: warehouse_id, in: query, schema: { type: string, format: uuid } }, { name: product_variant_id, in: query, schema: { type: string, format: uuid } }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/accounting/trial-balance:
+    get:
+      tags: [Reporting]
+      summary: "Trial balance as of a date. Headers: Code, Account, Type, Debit, Credit."
+      parameters: [{ name: as_of, in: query, schema: { type: string, format: date } }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/accounting/receivables:
+    get:
+      tags: [Reporting]
+      summary: "Org-wide receivables ageing. Headers: Party ID, Current, 1-30, 31-60, 61-90, 90+, Total."
+      parameters: [{ name: as_of, in: query, schema: { type: string, format: date } }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/accounting/payables:
+    get:
+      tags: [Reporting]
+      summary: "Org-wide payables ageing. Same shape as receivables."
+      parameters: [{ name: as_of, in: query, schema: { type: string, format: date } }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/accounting/accounts/{id}/ledger:
+    get:
+      tags: [Reporting]
+      summary: "Account ledger (cash/bank book). Headers: Date, Source, Description, Debit, Credit, Balance."
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/ReportFilterFrom"
+        - $ref: "#/components/parameters/ReportFilterTo"
+        - $ref: "#/components/parameters/ReportFormat"
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/tax/hsn-summary:
+    get:
+      tags: [Reporting]
+      summary: "HSN summary. Headers: HSN/SAC, Taxable, CGST, SGST, IGST, UTGST, CESS, Total Tax."
+      parameters: [{ $ref: "#/components/parameters/ReportFilterFrom" }, { $ref: "#/components/parameters/ReportFilterTo" }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/tax/rate-summary:
+    get:
+      tags: [Reporting]
+      summary: "Tax rate summary. Headers: Rate %, Taxable, Tax, Documents."
+      parameters: [{ $ref: "#/components/parameters/ReportFilterFrom" }, { $ref: "#/components/parameters/ReportFilterTo" }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
+  /reports/tax/gstr1:
+    get:
+      tags: [Reporting]
+      summary: >
+        GSTR-1-oriented preparation — explicitly NOT a filing submission
+        (title says so in the response too). Headers: Document Number,
+        Date, Supply Type, Customer GSTIN, Place of Supply, Taxable,
+        CGST, SGST, IGST, CESS, Grand Total. GSTR-3B is deliberately not
+        built (docs/TODO.md Stage 7 — its inward/ITC side needs
+        purchases' tax-engine wiring, which doesn't exist).
+      parameters: [{ $ref: "#/components/parameters/ReportFilterFrom" }, { $ref: "#/components/parameters/ReportFilterTo" }, { $ref: "#/components/parameters/ReportFormat" }]
+      responses: { "200": { $ref: "#/components/responses/ReportTableOK" } }
+
 components:
+  parameters:
+    ReportFilterFrom:
+      name: from
+      in: query
+      schema: { type: string, format: date }
+      description: YYYY-MM-DD.
+    ReportFilterTo:
+      name: to
+      in: query
+      schema: { type: string, format: date }
+    ReportFormat:
+      name: format
+      in: query
+      schema: { type: string, enum: [json, csv, xlsx, pdf], default: json }
+      description: "csv/xlsx/pdf responses are attachments (Content-Disposition set); export is synchronous only — no background-job/expiring-link path yet (docs/api.md)."
+
   securitySchemes:
     sessionCookie:
       type: apiKey
@@ -1561,6 +1724,13 @@ components:
         real RBAC grants — see docs/api.md.
 
   responses:
+    ReportTableOK:
+      description: OK. For format=csv/xlsx/pdf, the response is the corresponding binary/text content type as an attachment instead.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ReportTable" } }
+        text/csv: { schema: { type: string, format: binary } }
+        application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+        application/pdf: { schema: { type: string, format: binary } }
     BadRequest:
       description: Malformed request body or invalid field value.
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
@@ -2155,6 +2325,32 @@ components:
         GLAccountID: { type: string, format: uuid }
         IsActive: { type: boolean }
         CreatedAt: { type: string, format: date-time }
+
+    ReportTable:
+      type: object
+      description: >
+        internal/platform/export.Table's JSON shape — shared by every
+        /reports/* listing endpoint. headers and each rows entry are
+        ordered, positionally paired (rows[i][j] is the value for
+        headers[j]) — see the WriteJSON doc comment for why this isn't a
+        map-per-row shape.
+      properties:
+        title: { type: string }
+        headers: { type: array, items: { type: string } }
+        rows: { type: array, items: { type: array, items: { type: string } } }
+
+    DashboardSummary:
+      type: object
+      description: internal/modules/reporting/domain.DashboardSummary — no json tags, PascalCase fields (see this file's info.description).
+      properties:
+        TodaySales: { $ref: "#/components/schemas/Money" }
+        TodayCollections: { $ref: "#/components/schemas/Money" }
+        TodayPurchases: { $ref: "#/components/schemas/Money" }
+        OutstandingReceivable: { $ref: "#/components/schemas/Money" }
+        OutstandingPayable: { $ref: "#/components/schemas/Money" }
+        CurrentStockValue: { $ref: "#/components/schemas/Money" }
+        LowStockCount: { type: integer }
+        OverdueReceivable: { $ref: "#/components/schemas/Money" }
 
     UnmodeledResponse:
       description: >
