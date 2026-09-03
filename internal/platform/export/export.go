@@ -45,23 +45,23 @@ func WriteCSV(w io.Writer, t Table) error {
 	return cw.Error()
 }
 
+// WriteJSON serializes Table with the SAME ordered {title, headers, rows}
+// shape every other writer in this file honors — Headers and each Rows
+// entry stay plain ordered slices, never reshaped into a map. A
+// map[string]string per row was tried first and looked reasonable in
+// isolation (self-describing rows), but Go's encoding/json sorts map
+// keys alphabetically on marshal, silently discarding the caller's
+// intended column order, and it dropped the headers field entirely —
+// both real regressions a consumer (e.g. apps/web's ReportTable, which
+// already assumed this ordered shape) would only hit once real rows
+// existed, not against Stage 10b-1's empty-organisation screenshot.
 func WriteJSON(w io.Writer, t Table) error {
-	type jsonRow map[string]string
-	rows := make([]jsonRow, 0, len(t.Rows))
-	for _, r := range t.Rows {
-		jr := make(jsonRow, len(t.Headers))
-		for i, h := range t.Headers {
-			if i < len(r) {
-				jr[h] = r[i]
-			}
-		}
-		rows = append(rows, jr)
-	}
 	enc := json.NewEncoder(w)
 	return enc.Encode(struct {
-		Title string    `json:"title"`
-		Rows  []jsonRow `json:"rows"`
-	}{Title: t.Title, Rows: rows})
+		Title   string     `json:"title"`
+		Headers []string   `json:"headers"`
+		Rows    [][]string `json:"rows"`
+	}{Title: t.Title, Headers: t.Headers, Rows: t.Rows})
 }
 
 func WriteXLSX(w io.Writer, t Table) error {

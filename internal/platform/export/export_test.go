@@ -47,8 +47,9 @@ func TestWriteJSON_RoundTrips(t *testing.T) {
 		t.Fatalf("WriteJSON: %v", err)
 	}
 	var decoded struct {
-		Title string              `json:"title"`
-		Rows  []map[string]string `json:"rows"`
+		Title   string     `json:"title"`
+		Headers []string   `json:"headers"`
+		Rows    [][]string `json:"rows"`
 	}
 	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("decoding JSON: %v", err)
@@ -56,11 +57,50 @@ func TestWriteJSON_RoundTrips(t *testing.T) {
 	if decoded.Title != "Test Report" {
 		t.Fatalf("title = %q", decoded.Title)
 	}
+	if len(decoded.Headers) != 2 || decoded.Headers[0] != "Name" || decoded.Headers[1] != "Amount" {
+		t.Fatalf("headers = %v", decoded.Headers)
+	}
 	if len(decoded.Rows) != 2 {
 		t.Fatalf("got %d rows, want 2", len(decoded.Rows))
 	}
-	if decoded.Rows[0]["Name"] != "Alpha" || decoded.Rows[0]["Amount"] != "100.00" {
+	if decoded.Rows[0][0] != "Alpha" || decoded.Rows[0][1] != "100.00" {
 		t.Fatalf("row 0 = %v", decoded.Rows[0])
+	}
+}
+
+// TestWriteJSON_PreservesColumnOrder is a regression test for a real bug:
+// an earlier map[string]string-per-row implementation passed
+// TestWriteJSON_RoundTrips (which only checked 2 columns, alphabetically
+// adjacent) while silently reordering columns whose alphabetical order
+// differs from Headers — exactly apps/web's ReportTable's real-world
+// case ("Key" before "Grand Total" in Headers, but "G" < "K"
+// alphabetically).
+func TestWriteJSON_PreservesColumnOrder(t *testing.T) {
+	table := Table{
+		Title:   "Order Test",
+		Headers: []string{"Key", "Documents", "Taxable", "Tax", "Grand Total"},
+		Rows:    [][]string{{"2026-09-01", "3", "1000.00", "180.00", "1180.00"}},
+	}
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, table); err != nil {
+		t.Fatalf("WriteJSON: %v", err)
+	}
+	var decoded struct {
+		Headers []string   `json:"headers"`
+		Rows    [][]string `json:"rows"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("decoding JSON: %v", err)
+	}
+	for i, h := range table.Headers {
+		if decoded.Headers[i] != h {
+			t.Fatalf("headers[%d] = %q, want %q (order not preserved)", i, decoded.Headers[i], h)
+		}
+	}
+	for i, v := range table.Rows[0] {
+		if decoded.Rows[0][i] != v {
+			t.Fatalf("rows[0][%d] = %q, want %q (order not preserved)", i, decoded.Rows[0][i], v)
+		}
 	}
 }
 
