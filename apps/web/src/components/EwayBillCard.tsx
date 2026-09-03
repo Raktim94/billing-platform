@@ -32,6 +32,17 @@ interface StatusResponse {
   record: EwayBillRecord | null;
 }
 
+interface Vehicle {
+  ID: string;
+  RegistrationNumber: string;
+  Nickname: string;
+}
+
+interface Transporter {
+  ID: string;
+  Name: string;
+}
+
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -65,6 +76,21 @@ export function EwayBillCard({ documentId }: { documentId: string }) {
     queryKey: ["ewaybill-portal-url"],
     queryFn: () => api.get<{ url: string }>("/ewaybill/portal-url"),
     staleTime: Infinity,
+  });
+
+  // Saved vehicles/transporters (Settings → GST → Vehicles/Transporters)
+  // surfaced here as autocomplete suggestions, so filling in missing
+  // e-Way Bill info reuses what's already on file instead of the user
+  // retyping a registration number from memory every time.
+  const vehicles = useQuery({
+    queryKey: ["logistics-vehicles"],
+    queryFn: () => api.get<{ vehicles: Vehicle[] }>("/logistics/vehicles"),
+    staleTime: 60_000,
+  });
+  const transporters = useQuery({
+    queryKey: ["logistics-transporters"],
+    queryFn: () => api.get<{ transporters: Transporter[] }>("/logistics/transporters"),
+    staleTime: 60_000,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["ewaybill-status", documentId] });
@@ -216,19 +242,35 @@ export function EwayBillCard({ documentId }: { documentId: string }) {
             <input
               id="ewb-vehicle"
               className={ui.input}
+              list="ewb-vehicle-options"
               value={vehicleNumber}
               onChange={(e) => setVehicleNumber(e.target.value)}
               placeholder="e.g. MH12AB1234"
+              autoComplete="off"
             />
+            <datalist id="ewb-vehicle-options">
+              {vehicles.data?.vehicles.map((v) => (
+                <option key={v.ID} value={v.RegistrationNumber}>
+                  {v.Nickname ? `${v.RegistrationNumber} (${v.Nickname})` : v.RegistrationNumber}
+                </option>
+              ))}
+            </datalist>
           </div>
           <div className={ui.field}>
             <label htmlFor="ewb-transporter">Transporter name</label>
             <input
               id="ewb-transporter"
               className={ui.input}
+              list="ewb-transporter-options"
               value={transporterName}
               onChange={(e) => setTransporterName(e.target.value)}
+              autoComplete="off"
             />
+            <datalist id="ewb-transporter-options">
+              {transporters.data?.transporters.map((t) => (
+                <option key={t.ID} value={t.Name} />
+              ))}
+            </datalist>
           </div>
           <div className={ui.formActions}>
             <button
@@ -258,8 +300,9 @@ export function EwayBillCard({ documentId }: { documentId: string }) {
         <>
           <p className={styles.explainer}>
             We prepared your file{record.PreparedFileName ? ` (${record.PreparedFileName})` : ""} and opened the
-            official government e-Way Bill portal in a new tab. Upload the file there, generate the e-Way Bill, then
-            come back here and enter the number you were given.
+            official government e-Way Bill portal in a new tab. On that site, go to{" "}
+            <strong>e-Waybill → Generate Bulk</strong>, choose the file we prepared, then come back here and enter
+            the e-Way Bill number you were given.
           </p>
           {portalUrl.data?.url ? (
             <p className={styles.detail}>
@@ -273,9 +316,10 @@ export function EwayBillCard({ documentId }: { documentId: string }) {
         </>
       ) : (
         <p className={styles.explainer}>
-          This sale is ready. We'll prepare a file for the official government e-Way Bill portal and open it for you
-          — you complete the last step there yourself, in your own browser tab. We never see your government portal
-          login.
+          This sale is ready. We'll prepare a file for the official government e-Way Bill portal and open the portal
+          for you in a new tab. Once there, go to <strong>e-Waybill → Generate Bulk</strong> and upload the file we
+          prepared — you complete that last step yourself, in your own browser tab. We never see your government
+          portal login.
         </p>
       )}
       <div className={styles.actions}>
