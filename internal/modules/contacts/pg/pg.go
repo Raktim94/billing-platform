@@ -131,6 +131,27 @@ func (r *AddressRepo) Create(ctx context.Context, a *domain.Address) error {
 	return nil
 }
 
+// GetByID is the additive extension Stage 8c needs (same rationale as
+// TaxRegistrationRepository.GetByID, Stage 8): sales_documents stores
+// billing_address_id/shipping_address_id, and building a CanonicalEWayBill
+// needs to resolve those specific addresses by ID, not list-by-party.
+func (r *AddressRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Address, error) {
+	const q = `
+		SELECT id, organisation_id, party_id, address_type, line1, COALESCE(line2,''), COALESCE(city,''), COALESCE(state,''), COALESCE(postal_code,''), country_code, is_default, created_at, updated_at
+		FROM party_addresses WHERE id = $1`
+	var a domain.Address
+	var addressType string
+	err := r.pool.Q(ctx).QueryRow(ctx, q, id).Scan(&a.ID, &a.OrganisationID, &a.PartyID, &addressType, &a.Line1, &a.Line2, &a.City, &a.State, &a.PostalCode, &a.CountryCode, &a.IsDefault, &a.CreatedAt, &a.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("contacts: querying party_address by id: %w", err)
+	}
+	a.AddressType = domain.AddressType(addressType)
+	return &a, nil
+}
+
 func (r *AddressRepo) ListByParty(ctx context.Context, partyID uuid.UUID) ([]*domain.Address, error) {
 	const q = `
 		SELECT id, organisation_id, party_id, address_type, line1, COALESCE(line2,''), COALESCE(city,''), COALESCE(state,''), COALESCE(postal_code,''), country_code, is_default, created_at, updated_at

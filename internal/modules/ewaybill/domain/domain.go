@@ -30,16 +30,56 @@ const (
 	// longer "in transit." A cancelled EWB means the movement never
 	// happened at all. See ClosedByRole for who's allowed to do this.
 	StatusClosed Status = "CLOSED"
+
+	// --- FREE_PORTAL-mode states (docs/architecture.md §9b, Stage 8c) ---
+	// These extend the SAME Status type/column rather than a second
+	// status field — a FREE_PORTAL-mode Record only ever occupies one of
+	// these plus the shared terminal states above (GENERATED/CANCELLED);
+	// it never uses the AUTOMATIC_API states QUEUED/SUBMITTING/
+	// FAILED_RETRYABLE/FAILED_FINAL, which stay reserved for Mode ==
+	// ModeAutomaticAPI records.
+	StatusNotRequired              Status = "NOT_REQUIRED"
+	StatusNeedsInformation         Status = "NEEDS_INFORMATION"
+	StatusReady                    Status = "READY"
+	StatusPreparing                Status = "PREPARING"
+	StatusPortalFileReady          Status = "PORTAL_FILE_READY"
+	StatusAwaitingPortalCompletion Status = "AWAITING_PORTAL_COMPLETION"
+	StatusExpired                  Status = "EXPIRED"
 )
 
 func (s Status) Terminal() bool {
 	switch s {
-	case StatusGenerated, StatusCancelled, StatusClosed, StatusFailedFinal:
+	case StatusGenerated, StatusCancelled, StatusClosed, StatusFailedFinal,
+		StatusNotRequired, StatusExpired:
 		return true
 	default:
 		return false
 	}
 }
+
+// Mode is FREE_PORTAL (the default, no paid API required) or
+// AUTOMATIC_API (Stage 8's existing EInvoiceProvider-based flow).
+// docs/architecture.md §9b: one canonical model, one Record shape, for
+// both — Mode is just a column, not a fork in the domain type.
+type Mode string
+
+const (
+	ModeFreePortal   Mode = "FREE_PORTAL"
+	ModeAutomaticAPI Mode = "AUTOMATIC_API"
+)
+
+// Source records how a GENERATED record's EWB number was actually
+// obtained. SourceAPI is set by the existing AUTOMATIC_API flow;
+// SourceManualPortal/SourceImportedFile are the two FREE_PORTAL result-
+// linking paths (§9b point 40/43) — manual entry is the universal
+// fallback that must always work, imported-file is a convenience on top.
+type Source string
+
+const (
+	SourceAPI          Source = "API"
+	SourceManualPortal Source = "MANUAL_PORTAL"
+	SourceImportedFile Source = "IMPORTED_FILE"
+)
 
 // ClosedByRole is who performed a voluntary closure — the 2026-08-01
 // advisory names exactly these four as eligible.
@@ -68,8 +108,18 @@ type Record struct {
 	IRN              *string
 	EWBNumber        *string
 	Status           Status
-	ValidFrom        *time.Time
-	ValidUntil       *time.Time
+	Mode             Mode
+	Source           *Source
+	// CanonicalSnapshot is the raw jsonb bytes of the CanonicalEWayBill
+	// captured at first preparation (docs/architecture.md §9b) — see
+	// internal/modules/ewaybill/canonical. Nil for AUTOMATIC_API-mode
+	// records, which don't need one (the provider builds its own request
+	// from live data at call time, same as einvoice's buildIRNRequest).
+	CanonicalSnapshot []byte
+	PreparedFileName  *string
+	PreparedAt        *time.Time
+	ValidFrom         *time.Time
+	ValidUntil        *time.Time
 	// ShipToGSTIN is nullable pre-resolution; the literal "URP" is a
 	// valid resolved value (unregistered/not-applicable recipient), not a
 	// sentinel for "unset" — see migrations/0024's column comment.
@@ -91,17 +141,21 @@ type Record struct {
 }
 
 type UpdateFields struct {
-	EWBNumber     *string
-	ValidFrom     *time.Time
-	ValidUntil    *time.Time
-	ShipToGSTIN   *string
-	ClosedAt      *time.Time
-	ClosedByRole  *ClosedByRole
-	ErrorCode     *string
-	ErrorMessage  *string
-	CorrelationID *string
-	CancelledAt   *time.Time
-	CancelReason  *string
+	EWBNumber         *string
+	ValidFrom         *time.Time
+	ValidUntil        *time.Time
+	ShipToGSTIN       *string
+	ClosedAt          *time.Time
+	ClosedByRole      *ClosedByRole
+	ErrorCode         *string
+	ErrorMessage      *string
+	CorrelationID     *string
+	CancelledAt       *time.Time
+	CancelReason      *string
+	Source            *Source
+	CanonicalSnapshot []byte
+	PreparedFileName  *string
+	PreparedAt        *time.Time
 }
 
 type Repository interface {
@@ -120,4 +174,11 @@ var (
 	ErrNotFound         = errors.New("ewaybill: record not found")
 	ErrNotGenerated     = errors.New("ewaybill: not GENERATED, cannot close/cancel")
 	ErrInvalidCloseRole = errors.New("ewaybill: closed_by_role must be one of SUPPLIER, RECIPIENT, TRANSPORTER, DRIVER")
+	// ErrResultMismatch is returned when an imported/manually-entered
+	// government result doesn't match the target invoice's own identifying
+	// fields (docs/architecture.md §9b: "verified before linking, not
+	// trusted blindly") — the caller must surface this as a clear,
+	// non-silent rejection, never auto-link a mismatched result.
+	ErrResultMismatch = errors.New("ewaybill: this e-Way Bill result appears to belong to another invoice")
+	ErrNotEligible    = errors.New("ewaybill: this document is not eligible for e-Way Bill generation (NOT_REQUIRED)")
 )

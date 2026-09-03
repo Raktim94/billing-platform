@@ -26,22 +26,30 @@ var _ domain.Repository = (*RecordRepo)(nil)
 const selectCols = `id, organisation_id, sales_document_id, einvoice_record_id, irn, ewb_number, status,
 	valid_from, valid_until, ship_to_gstin, transporter_id, transporter_name, vehicle_number,
 	distance_km, part_b_history, closed_at, closed_by_role, error_code, error_message,
-	correlation_id, cancelled_at, cancel_reason, created_at, updated_at`
+	correlation_id, cancelled_at, cancel_reason, created_at, updated_at,
+	mode, source, canonical_snapshot, prepared_file_name, prepared_at`
 
 func scanRecord(row pgx.Row) (*domain.Record, error) {
 	var r domain.Record
-	var status string
+	var status, mode string
+	var source *string
 	var closedByRole *string
 	var partBRaw []byte
 	var distance *string
 	err := row.Scan(&r.ID, &r.OrganisationID, &r.SalesDocumentID, &r.EInvoiceRecordID, &r.IRN, &r.EWBNumber, &status,
 		&r.ValidFrom, &r.ValidUntil, &r.ShipToGSTIN, &r.TransporterID, &r.TransporterName, &r.VehicleNumber,
 		&distance, &partBRaw, &r.ClosedAt, &closedByRole, &r.ErrorCode, &r.ErrorMessage,
-		&r.CorrelationID, &r.CancelledAt, &r.CancelReason, &r.CreatedAt, &r.UpdatedAt)
+		&r.CorrelationID, &r.CancelledAt, &r.CancelReason, &r.CreatedAt, &r.UpdatedAt,
+		&mode, &source, &r.CanonicalSnapshot, &r.PreparedFileName, &r.PreparedAt)
 	if err != nil {
 		return nil, err
 	}
 	r.Status = domain.Status(status)
+	r.Mode = domain.Mode(mode)
+	if source != nil {
+		s := domain.Source(*source)
+		r.Source = &s
+	}
 	r.DistanceKM = distance
 	if closedByRole != nil {
 		role := domain.ClosedByRole(*closedByRole)
@@ -69,13 +77,17 @@ func (repo *RecordRepo) GetBySalesDocumentID(ctx context.Context, salesDocumentI
 }
 
 func (repo *RecordRepo) Create(ctx context.Context, r *domain.Record) error {
+	mode := r.Mode
+	if mode == "" {
+		mode = domain.ModeAutomaticAPI // existing callers (Stage 8) never set Mode; preserve their behavior exactly
+	}
 	const q = `
 		INSERT INTO ewaybill_records
 			(id, organisation_id, sales_document_id, einvoice_record_id, irn, status,
-			 transporter_id, transporter_name, vehicle_number, distance_km, ship_to_gstin)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+			 transporter_id, transporter_name, vehicle_number, distance_km, ship_to_gstin, mode)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	_, err := repo.pool.Q(ctx).Exec(ctx, q, r.ID, r.OrganisationID, r.SalesDocumentID, r.EInvoiceRecordID, r.IRN, string(r.Status),
-		r.TransporterID, r.TransporterName, r.VehicleNumber, r.DistanceKM, r.ShipToGSTIN)
+		r.TransporterID, r.TransporterName, r.VehicleNumber, r.DistanceKM, r.ShipToGSTIN, string(mode))
 	if err != nil {
 		return fmt.Errorf("ewaybill: inserting record: %w", err)
 	}
@@ -87,6 +99,11 @@ func (repo *RecordRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status d
 	if f.ClosedByRole != nil {
 		s := string(*f.ClosedByRole)
 		closedByRole = &s
+	}
+	var source *string
+	if f.Source != nil {
+		s := string(*f.Source)
+		source = &s
 	}
 	const q = `
 		UPDATE ewaybill_records SET
@@ -102,11 +119,16 @@ func (repo *RecordRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status d
 			correlation_id = COALESCE($11, correlation_id),
 			cancelled_at = COALESCE($12, cancelled_at),
 			cancel_reason = COALESCE($13, cancel_reason),
+			source = COALESCE($14, source),
+			canonical_snapshot = COALESCE($15, canonical_snapshot),
+			prepared_file_name = COALESCE($16, prepared_file_name),
+			prepared_at = COALESCE($17, prepared_at),
 			updated_at = now()
 		WHERE id = $1`
 	n, err := repo.pool.Q(ctx).Exec(ctx, q, id, string(status),
 		f.EWBNumber, f.ValidFrom, f.ValidUntil, f.ShipToGSTIN, f.ClosedAt, closedByRole,
-		f.ErrorCode, f.ErrorMessage, f.CorrelationID, f.CancelledAt, f.CancelReason)
+		f.ErrorCode, f.ErrorMessage, f.CorrelationID, f.CancelledAt, f.CancelReason,
+		source, f.CanonicalSnapshot, f.PreparedFileName, f.PreparedAt)
 	if err != nil {
 		return fmt.Errorf("ewaybill: updating record status: %w", err)
 	}

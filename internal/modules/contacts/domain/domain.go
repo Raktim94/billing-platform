@@ -118,6 +118,8 @@ type PartyRepository interface {
 type AddressRepository interface {
 	Create(ctx context.Context, a *Address) error
 	ListByParty(ctx context.Context, partyID uuid.UUID) ([]*Address, error)
+	// GetByID is the additive extension Stage 8c needs — see pg.AddressRepo.GetByID's doc comment.
+	GetByID(ctx context.Context, id uuid.UUID) (*Address, error)
 }
 
 type TaxRegistrationRepository interface {

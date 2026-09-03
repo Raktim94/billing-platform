@@ -21,9 +21,10 @@ import (
 // simulate exactly one government-API outage (Scenario L's building
 // block) without needing a real network fault.
 type Provider struct {
-	mu                  sync.Mutex
-	failNextGenerateIRN error
-	generateIRNCalls    int
+	mu                       sync.Mutex
+	failNextGenerateIRN      error
+	generateIRNCalls         int
+	failNextGenerateEWayBill error
 }
 
 func New() *Provider {
@@ -92,7 +93,24 @@ func (p *Provider) GetIRNByDocument(ctx context.Context, docType, docNo string, 
 
 func (p *Provider) CancelIRN(ctx context.Context, irn, reason string) error { return nil }
 
+// FailNextGenerateEWayBill is FailNextGenerateIRN's sibling for the
+// AUTOMATIC_API e-Way Bill path (Stage 8c) — used to test the
+// API-failure-falls-back-to-FREE_PORTAL scenario (docs/architecture.md §9b)
+// without a real network fault.
+func (p *Provider) FailNextGenerateEWayBill(err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.failNextGenerateEWayBill = err
+}
+
 func (p *Provider) GenerateEWayBillByIRN(ctx context.Context, irn string, transport domain.TransportDetails) (domain.EWBResponse, error) {
+	p.mu.Lock()
+	failErr := p.failNextGenerateEWayBill
+	p.failNextGenerateEWayBill = nil
+	p.mu.Unlock()
+	if failErr != nil {
+		return domain.EWBResponse{}, failErr
+	}
 	sum := sha256.Sum256([]byte("ewb|" + irn))
 	now := time.Now().UTC()
 	return domain.EWBResponse{

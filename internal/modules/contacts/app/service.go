@@ -266,6 +266,19 @@ func (s *Service) GetTaxRegistrationForOtherModule(ctx context.Context, orgID, i
 	return s.taxRegistrations.GetByID(ctx, id)
 }
 
+// GetPartyForOtherModule and GetAddressForOtherModule are Stage 8c's
+// additive extensions of the same cross-module-read convention as
+// GetTaxRegistrationForOtherModule above — ewaybill's canonical model
+// builder needs to resolve a sales document's customer party and
+// billing/shipping address IDs.
+func (s *Service) GetPartyForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.Party, error) {
+	return s.parties.GetByID(ctx, id)
+}
+
+func (s *Service) GetAddressForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.Address, error) {
+	return s.addresses.GetByID(ctx, id)
+}
+
 // LookupByRegistrationNumber is the GSTIN search path (brief §24).
 func (s *Service) LookupByRegistrationNumber(ctx context.Context, principal permissions.Principal, registrationNumber string) (*domain.TaxRegistration, error) {
 	if err := s.view(ctx, principal); err != nil {
