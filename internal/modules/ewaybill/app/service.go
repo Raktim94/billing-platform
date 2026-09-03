@@ -185,6 +185,14 @@ func (s *Service) Close(ctx context.Context, id uuid.UUID, role domain.ClosedByR
 	return s.records.UpdateStatus(ctx, id, domain.StatusClosed, domain.UpdateFields{ClosedAt: &now, ClosedByRole: &role})
 }
 
+// GetRecordForDocument is a thin read wrapper for httpapi's status
+// endpoint — domain.ErrNotFound (unwrapped) means no e-Way Bill record
+// exists yet for this document at all, distinct from NOT_REQUIRED, which
+// is a record that exists and was evaluated as not needed.
+func (s *Service) GetRecordForDocument(ctx context.Context, salesDocumentID uuid.UUID) (*domain.Record, error) {
+	return s.records.GetBySalesDocumentID(ctx, salesDocumentID)
+}
+
 // Cancel marks an EWB CANCELLED (the movement never happened), as opposed
 // to Close (it happened, it's just no longer in transit).
 func (s *Service) Cancel(ctx context.Context, salesDocumentID uuid.UUID, reason string) error {

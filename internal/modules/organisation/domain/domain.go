@@ -22,9 +22,13 @@ type Organisation struct {
 	Name                string
 	DefaultCurrencyCode string
 	DefaultTimezone     string
-	Status              Status
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	// EWayBillMode is docs/architecture.md §9b's per-organisation setting
+	// — "FREE_PORTAL" (default, no paid API required) or "AUTOMATIC_API"
+	// (the optional Stage 8 EWayBillProvider path).
+	EWayBillMode string
+	Status       Status
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type LegalEntity struct {
@@ -70,6 +74,7 @@ type Warehouse struct {
 type OrganisationRepository interface {
 	Create(ctx context.Context, o *Organisation) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Organisation, error)
+	UpdateEWayBillMode(ctx context.Context, id uuid.UUID, mode string) error
 }
 
 type LegalEntityRepository interface {

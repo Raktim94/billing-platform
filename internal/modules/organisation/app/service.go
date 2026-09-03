@@ -217,6 +217,29 @@ func (s *Service) GetOrganisation(ctx context.Context, principal permissions.Pri
 	return result, err
 }
 
+// SetEWayBillMode changes the organisation's e-Way Bill production mode
+// (docs/architecture.md §9b). "settings.manage" (not "settings.view") is
+// required — this changes real production behavior, not just a display
+// preference.
+func (s *Service) SetEWayBillMode(ctx context.Context, principal permissions.Principal, mode string) (*domain.Organisation, error) {
+	if mode != "FREE_PORTAL" && mode != "AUTOMATIC_API" {
+		return nil, fmt.Errorf("organisation: ewaybill_mode must be FREE_PORTAL or AUTOMATIC_API, got %q", mode)
+	}
+	if err := s.permissions.Require(ctx, principal, "settings.manage", permissions.Scope{}); err != nil {
+		return nil, err
+	}
+	var result *domain.Organisation
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		if err := s.organisations.UpdateEWayBillMode(ctx, principal.OrganisationID, mode); err != nil {
+			return err
+		}
+		var err error
+		result, err = s.organisations.GetByID(ctx, principal.OrganisationID)
+		return err
+	})
+	return result, err
+}
+
 // GetLegalEntityForOtherModule is a cross-module read (added Stage 5b) —
 // sales.FinalizeDocument needs the supplier-side GSTIN/state code, and
 // should authorize on ITS OWN "sales.finalize" check, not require the

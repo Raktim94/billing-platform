@@ -29,6 +29,13 @@ import (
 	contactsapp "billing-platform/internal/modules/contacts/app"
 	contactshttp "billing-platform/internal/modules/contacts/httpapi"
 	contactspg "billing-platform/internal/modules/contacts/pg"
+	einvoicemock "billing-platform/internal/modules/einvoice/v1/mock"
+	ewaybillapp "billing-platform/internal/modules/ewaybill/app"
+	"billing-platform/internal/modules/ewaybill/eligibility"
+	"billing-platform/internal/modules/ewaybill/govportal"
+	ewaybillhttp "billing-platform/internal/modules/ewaybill/httpapi"
+	ewaybillpg "billing-platform/internal/modules/ewaybill/pg"
+	portalv1 "billing-platform/internal/modules/ewaybill/portal/v1"
 	"billing-platform/internal/modules/gstindia"
 	gstindiaapp "billing-platform/internal/modules/gstindia/app"
 	gstindiahttp "billing-platform/internal/modules/gstindia/httpapi"
@@ -39,6 +46,9 @@ import (
 	inventoryapp "billing-platform/internal/modules/inventory/app"
 	inventoryhttp "billing-platform/internal/modules/inventory/httpapi"
 	inventorypg "billing-platform/internal/modules/inventory/pg"
+	logisticsapp "billing-platform/internal/modules/logistics/app"
+	logisticshttp "billing-platform/internal/modules/logistics/httpapi"
+	logisticspg "billing-platform/internal/modules/logistics/pg"
 	notificationsapp "billing-platform/internal/modules/notifications/app"
 	notificationshttp "billing-platform/internal/modules/notifications/httpapi"
 	notificationspg "billing-platform/internal/modules/notifications/pg"
@@ -284,6 +294,25 @@ func run() error {
 		auditRecorder,
 	)
 
+	logisticsSvc := logisticsapp.NewService(
+		pool,
+		logisticspg.NewVehicleRepo(pool),
+		logisticspg.NewTransporterRepo(pool),
+		logisticspg.NewPreferenceRepo(pool),
+		permissionsChecker,
+		auditRecorder,
+	)
+
+	// ewaybillSvc's AUTOMATIC_API path (einvoicemock.New()) is wired but not
+	// exposed via any httpapi route in this pass — only the FREE_PORTAL
+	// flow (docs/architecture.md §9b, this codebase's default and only
+	// currently reachable production mode) is mounted below. A real
+	// EWayBillProvider swap-in for AUTOMATIC_API is unchanged future work,
+	// same as einvoice's own sandbox/real-GSP swap (docs/research.md).
+	ewaybillSvc := ewaybillapp.NewService(ewaybillpg.NewRecordRepo(pool), einvoicemock.New(), salesSvc).
+		WithFreePortal(orgSvc, contactsSvc, taxationSvc, eligibility.NewPGRepository(pool), portalv1.New(), auditRecorder)
+	govPortalSvc := govportal.NewService()
+
 	identitySvc := identityapp.NewService(
 		pool,
 		identitypg.NewUserRepo(pool),
@@ -359,6 +388,8 @@ func run() error {
 			reportinghttp.NewHandlers(reportingSvc).Mount(r)
 			webhookshttp.NewHandlers(webhooksSvc).Mount(r)
 			notificationshttp.NewHandlers(notificationsSvc).Mount(r)
+			logisticshttp.NewHandlers(logisticsSvc).Mount(r)
+			ewaybillhttp.NewHandlers(ewaybillSvc, pool, permissionsChecker, govPortalSvc).Mount(r)
 		})
 	})
 
