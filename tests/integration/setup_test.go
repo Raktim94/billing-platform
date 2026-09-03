@@ -12,6 +12,8 @@ package integration
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -45,24 +47,11 @@ var sharedPool *database.Pool
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	container, err := tcpostgres.Run(ctx, "postgres:18",
-		tcpostgres.WithDatabase("billing_test"),
-		tcpostgres.WithUsername("billing_migrator"),
-		tcpostgres.WithPassword("billing_migrator"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second)),
-	)
+	migratorDSN, cleanup, err := acquirePostgres(ctx)
 	if err != nil {
-		panic("starting postgres container: " + err.Error())
+		panic(err.Error())
 	}
-	defer func() { _ = container.Terminate(ctx) }()
-
-	migratorDSN, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		panic("getting connection string: " + err.Error())
-	}
+	defer cleanup()
 
 	if err := database.Migrate(migratorDSN, migrations.FS); err != nil {
 		panic("applying migrations: " + err.Error())
@@ -83,6 +72,84 @@ func TestMain(m *testing.M) {
 	sharedPool = pool
 
 	m.Run()
+}
+
+// acquirePostgres returns a billing_migrator-role DSN pointing at a
+// fresh billing_test database, plus a cleanup func. Two paths:
+//
+//  1. Default (Docker available): Testcontainers spins up a real,
+//     always-fresh postgres:18 container — this is the path every other
+//     stage's own testing was verified against and stays the default so
+//     CI and any developer with Docker gets unchanged behavior.
+//  2. TEST_POSTGRES_ADMIN_DSN set (no Docker in this environment):
+//     connects to an already-running external PostgreSQL instance as a
+//     superuser and drops+recreates billing_test fresh, so isolation
+//     between runs matches the container path even though the server
+//     itself is long-lived. Added specifically because this environment
+//     has no Docker daemon and no root to install one — a real
+//     PostgreSQL 18 (via a user-space conda-forge install, no root
+//     needed) is a genuine, non-mocked substitute for exercising this
+//     suite's RLS/security tests, not a shortcut around them.
+func acquirePostgres(ctx context.Context) (migratorDSN string, cleanup func(), err error) {
+	if adminDSN := os.Getenv("TEST_POSTGRES_ADMIN_DSN"); adminDSN != "" {
+		return acquireExternalPostgres(ctx, adminDSN)
+	}
+
+	container, err := tcpostgres.Run(ctx, "postgres:18",
+		tcpostgres.WithDatabase("billing_test"),
+		tcpostgres.WithUsername("billing_migrator"),
+		tcpostgres.WithPassword("billing_migrator"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(60*time.Second)),
+	)
+	if err != nil {
+		return "", nil, fmt.Errorf("starting postgres container: %w", err)
+	}
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		return "", nil, fmt.Errorf("getting connection string: %w", err)
+	}
+	return dsn, func() { _ = container.Terminate(ctx) }, nil
+}
+
+// acquireExternalPostgres connects to adminDSN (any role that can DROP/
+// CREATE DATABASE and roles — e.g. the postgres superuser) and resets
+// billing_test + the billing_migrator role to a clean state, matching
+// what a fresh Testcontainers container provides.
+func acquireExternalPostgres(ctx context.Context, adminDSN string) (migratorDSN string, cleanup func(), err error) {
+	admin, err := pgxpool.New(ctx, adminDSN)
+	if err != nil {
+		return "", nil, fmt.Errorf("connecting to TEST_POSTGRES_ADMIN_DSN: %w", err)
+	}
+	defer admin.Close()
+
+	// DROP DATABASE cannot run inside a transaction/pipelined batch —
+	// each statement goes over its own Exec call, not a single
+	// semicolon-joined string.
+	for _, stmt := range []string{
+		`DROP DATABASE IF EXISTS billing_test`,
+		`DROP ROLE IF EXISTS billing_app`,
+		`DROP ROLE IF EXISTS billing_migrator`,
+		`CREATE ROLE billing_migrator WITH LOGIN PASSWORD 'billing_migrator' CREATEDB CREATEROLE`,
+		`CREATE DATABASE billing_test OWNER billing_migrator`,
+	} {
+		if _, err := admin.Exec(ctx, stmt); err != nil {
+			return "", nil, fmt.Errorf("resetting billing_test (%s): %w", stmt, err)
+		}
+	}
+
+	// Rebuild the DSN against billing_test as billing_migrator, keeping
+	// adminDSN's host/port — sslmode=disable since this is always a
+	// local, trust-auth, throwaway test instance.
+	base := strings.SplitN(adminDSN, "@", 2)
+	if len(base) != 2 {
+		return "", nil, fmt.Errorf("TEST_POSTGRES_ADMIN_DSN is not in postgres://user:pass@host:port/db form")
+	}
+	hostPart := strings.SplitN(base[1], "/", 2)[0]
+	dsn := fmt.Sprintf("postgres://billing_migrator:billing_migrator@%s/billing_test?sslmode=disable", hostPart)
+	return dsn, func() {}, nil
 }
 
 // provisionAppRole creates the non-owning runtime role and grants it
