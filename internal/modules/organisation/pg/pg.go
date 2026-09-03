@@ -107,6 +107,24 @@ func (r *LegalEntityRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*do
 	return &le, nil
 }
 
+func (r *LegalEntityRepo) UpdateGSTDetails(ctx context.Context, orgID, id uuid.UUID, gstin, gstStateCode string) (*domain.LegalEntity, error) {
+	const q = `
+		UPDATE legal_entities SET gstin = NULLIF($3, ''), gst_state_code = NULLIF($4, ''), updated_at = now()
+		WHERE organisation_id = $1 AND id = $2
+		RETURNING id, organisation_id, legal_name, country_code, base_currency_code, COALESCE(gstin, ''), COALESCE(gst_state_code, ''), status, created_at, updated_at`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id, gstin, gstStateCode)
+	var le domain.LegalEntity
+	var status string
+	if err := row.Scan(&le.ID, &le.OrganisationID, &le.LegalName, &le.CountryCode, &le.BaseCurrencyCode, &le.GSTIN, &le.GSTStateCode, &status, &le.CreatedAt, &le.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("organisation: updating legal_entity GST details: %w", err)
+	}
+	le.Status = domain.Status(status)
+	return &le, nil
+}
+
 func (r *LegalEntityRepo) ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*domain.LegalEntity, error) {
 	const q = `
 		SELECT id, organisation_id, legal_name, country_code, base_currency_code, COALESCE(gstin, ''), COALESCE(gst_state_code, ''), status, created_at, updated_at

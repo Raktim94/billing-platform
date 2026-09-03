@@ -64,6 +64,14 @@ func (fakeStateRepo) GetByCode(ctx context.Context, code string) (*gstdomain.GST
 	return &s, nil
 }
 
+func (fakeStateRepo) ListAll(ctx context.Context) ([]gstdomain.GSTState, error) {
+	out := make([]gstdomain.GSTState, 0, len(testStates))
+	for _, s := range testStates {
+		out = append(out, s)
+	}
+	return out, nil
+}
+
 func mustMoney(t *testing.T, amount string, currency string) money.Money {
 	t.Helper()
 	m, err := money.Parse(amount, currency)

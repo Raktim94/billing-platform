@@ -74,4 +74,9 @@ type StateRepository interface {
 	// GetByCode returns the state/UT row for a GST state code, or
 	// domain.ErrNotFound if the code isn't in gst_state_codes.
 	GetByCode(ctx context.Context, code string) (*GSTState, error)
+	// ListAll returns every state/UT row — the reference data a client
+	// needs to offer a real dropdown instead of asking a user to type a
+	// 2-digit code from memory (exactly the kind of unvalidated input
+	// that caused the bug docs/adr/0007 documents).
+	ListAll(ctx context.Context) ([]GSTState, error)
 }

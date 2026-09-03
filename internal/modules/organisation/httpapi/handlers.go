@@ -32,6 +32,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Put("/organisation/ewaybill-mode", h.setEWayBillMode)
 	r.Get("/legal-entities", h.listLegalEntities)
 	r.Post("/legal-entities", h.createLegalEntity)
+	r.Put("/legal-entities/{id}/gst", h.updateLegalEntityGST)
 	r.Get("/branches", h.listBranches)
 	r.Post("/branches", h.createBranch)
 	r.Get("/branches/{id}/warehouses", h.listWarehouses)
@@ -112,6 +113,12 @@ type createLegalEntityRequest struct {
 	LegalName        string `json:"legal_name"`
 	CountryCode      string `json:"country_code"`
 	BaseCurrencyCode string `json:"base_currency_code"`
+	// GSTIN/GSTStateCode were already supported by app.CreateLegalEntityParams
+	// but never exposed here — same class of gap as bootstrapRequest's,
+	// found and fixed the same pass (see identity/httpapi/handlers.go's
+	// bootstrapRequest comment for the full story).
+	GSTIN        string `json:"gstin,omitempty"`
+	GSTStateCode string `json:"gst_state_code,omitempty"`
 }
 
 func (h *Handlers) createLegalEntity(w http.ResponseWriter, r *http.Request) {
@@ -122,12 +129,40 @@ func (h *Handlers) createLegalEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	le, err := h.svc.CreateLegalEntity(r.Context(), principal(r), app.CreateLegalEntityParams{
 		LegalName: req.LegalName, CountryCode: req.CountryCode, BaseCurrencyCode: req.BaseCurrencyCode,
+		GSTIN: req.GSTIN, GSTStateCode: req.GSTStateCode,
 	})
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, le)
+}
+
+type updateLegalEntityGSTRequest struct {
+	GSTIN        string `json:"gstin"`
+	GSTStateCode string `json:"gst_state_code"`
+}
+
+// updateLegalEntityGST is the fix path for a legal entity that has no
+// GSTStateCode yet — without it, that entity can never finalize a sales
+// document at all (see app.Service.UpdateLegalEntityGST's doc comment).
+func (h *Handlers) updateLegalEntityGST(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, r, httpx.NewBadRequest("INVALID_ID", "id must be a UUID."))
+		return
+	}
+	req, err := decodeJSON[updateLegalEntityGSTRequest](r)
+	if err != nil {
+		httpx.WriteError(w, r, httpx.NewBadRequest("INVALID_BODY", "Request body is malformed."))
+		return
+	}
+	le, err := h.svc.UpdateLegalEntityGST(r.Context(), principal(r), id, req.GSTIN, req.GSTStateCode)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, le)
 }
 
 func (h *Handlers) listBranches(w http.ResponseWriter, r *http.Request) {

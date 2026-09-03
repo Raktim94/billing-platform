@@ -321,6 +321,42 @@ func (s *Service) CreateLegalEntity(ctx context.Context, principal permissions.P
 	return le, nil
 }
 
+// UpdateLegalEntityGST sets or corrects a legal entity's GSTIN/state
+// code after creation — the fix path for an entity bootstrapped (or
+// created via CreateLegalEntity) before its GST registration was known.
+// Genuinely necessary, not a convenience: a legal entity with no
+// GSTStateCode can never finalize a sales document at all (tax_documents.
+// supplier_state_code is a NOT NULL foreign key), so without this method
+// there was no way to recover once bootstrapped without one — see
+// docs/adr/0007-bootstrap-and-legal-entity-gst-fields.md.
+func (s *Service) UpdateLegalEntityGST(ctx context.Context, principal permissions.Principal, legalEntityID uuid.UUID, gstin, gstStateCode string) (*domain.LegalEntity, error) {
+	if err := s.permissions.Require(ctx, principal, "settings.manage", permissions.Scope{}); err != nil {
+		return nil, err
+	}
+	var le *domain.LegalEntity
+	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
+		var err error
+		le, err = s.legalEntities.UpdateGSTDetails(ctx, principal.OrganisationID, legalEntityID, gstin, gstStateCode)
+		if err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, audit.Entry{
+			OrganisationID: principal.OrganisationID,
+			ActorUserID:    &principal.UserID,
+			ActorType:      audit.ActorUser,
+			Action:         "legal_entity.gst_updated",
+			EntityType:     "legal_entity",
+			EntityID:       &legalEntityID,
+			AfterState:     map[string]any{"gstin": gstin, "gst_state_code": gstStateCode},
+			At:             s.now(),
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return le, nil
+}
+
 type CreateBranchParams struct {
 	LegalEntityID uuid.UUID
 	Code          string

@@ -99,6 +99,24 @@ type StateRepo struct{ pool *database.Pool }
 
 func NewStateRepo(pool *database.Pool) *StateRepo { return &StateRepo{pool: pool} }
 
+func (r *StateRepo) ListAll(ctx context.Context) ([]domain.GSTState, error) {
+	const q = `SELECT code, name, is_union_territory FROM gst_state_codes ORDER BY name`
+	rows, err := r.pool.Q(ctx).Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("gstindia: listing state codes: %w", err)
+	}
+	defer rows.Close()
+	var out []domain.GSTState
+	for rows.Next() {
+		var s domain.GSTState
+		if err := rows.Scan(&s.Code, &s.Name, &s.IsUnionTerritory); err != nil {
+			return nil, fmt.Errorf("gstindia: scanning state code: %w", err)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 func (r *StateRepo) GetByCode(ctx context.Context, code string) (*domain.GSTState, error) {
 	const q = `SELECT code, name, is_union_territory FROM gst_state_codes WHERE code = $1`
 	var s domain.GSTState

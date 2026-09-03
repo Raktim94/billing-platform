@@ -22,13 +22,24 @@ import (
 type Service struct {
 	pool        database.Runner
 	rates       domain.TaxRateRepository
+	states      domain.StateRepository
 	permissions *permissions.Checker
 	audit       audit.Recorder
 	now         func() time.Time
 }
 
-func NewService(pool database.Runner, rates domain.TaxRateRepository, checker *permissions.Checker, recorder audit.Recorder) *Service {
-	return &Service{pool: pool, rates: rates, permissions: checker, audit: recorder, now: time.Now}
+func NewService(pool database.Runner, rates domain.TaxRateRepository, states domain.StateRepository, checker *permissions.Checker, recorder audit.Recorder) *Service {
+	return &Service{pool: pool, rates: rates, states: states, permissions: checker, audit: recorder, now: time.Now}
+}
+
+// ListStateCodes returns every GST state/UT code — global reference
+// data, no organisation scoping needed (same as gst_state_codes itself,
+// migrations/0015). No permission check either: this is read-only,
+// non-tenant-specific data any authenticated user may read, the same
+// reasoning govportal.GetOfficialEWayBillPortalURL already documents for
+// itself.
+func (s *Service) ListStateCodes(ctx context.Context) ([]domain.GSTState, error) {
+	return s.states.ListAll(ctx)
 }
 
 func (s *Service) view(ctx context.Context, principal permissions.Principal) error {

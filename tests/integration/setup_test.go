@@ -127,10 +127,13 @@ func acquireExternalPostgres(ctx context.Context, adminDSN string) (migratorDSN 
 
 	// DROP DATABASE cannot run inside a transaction/pipelined batch —
 	// each statement goes over its own Exec call, not a single
-	// semicolon-joined string.
+	// semicolon-joined string. billing_app is deliberately NOT dropped
+	// here (see provisionAppRole's DO-block comment) — it's a
+	// cluster-wide role name shared with migrate_test.go's own separate
+	// database, so dropping it here can fail with "objects depend on it"
+	// whenever that test has already granted it privileges there.
 	for _, stmt := range []string{
 		`DROP DATABASE IF EXISTS billing_test`,
-		`DROP ROLE IF EXISTS billing_app`,
 		`DROP ROLE IF EXISTS billing_migrator`,
 		`CREATE ROLE billing_migrator WITH LOGIN PASSWORD 'billing_migrator' CREATEDB CREATEROLE`,
 		`CREATE DATABASE billing_test OWNER billing_migrator`,
@@ -167,7 +170,15 @@ func provisionAppRole(ctx context.Context, migratorDSN string) error {
 	defer conn.Close()
 
 	statements := []string{
-		`CREATE ROLE billing_app WITH LOGIN PASSWORD 'billing_app_pw'`,
+		// Idempotent (DO-block guarded, same pattern as
+		// migrations/0029_runtime_role_grants.up.sql), not a bare CREATE
+		// ROLE — billing_app is a cluster-wide role name that migrate_test.go's
+		// own full migration up/down cycle (against its own separate
+		// billing_migrate_test database) also creates/grants via that same
+		// migration 0029, since role existence checks aren't per-database.
+		// A bare CREATE ROLE here would fail on the TEST_POSTGRES_ADMIN_DSN
+		// path whenever that test runs first in the same long-lived cluster.
+		`DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'billing_app') THEN CREATE ROLE billing_app WITH LOGIN PASSWORD 'billing_app_pw'; END IF; END $$`,
 		`GRANT USAGE ON SCHEMA public TO billing_app`,
 		`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO billing_app`,
 		`GRANT EXECUTE ON FUNCTION auth_lookup_user_by_email(text) TO billing_app`,

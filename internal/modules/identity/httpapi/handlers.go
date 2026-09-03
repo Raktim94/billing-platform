@@ -96,13 +96,25 @@ type bootstrapRequest struct {
 	DefaultTimezone     string `json:"default_timezone"`
 	LegalEntityName     string `json:"legal_entity_name"`
 	CountryCode         string `json:"country_code"`
-	BranchCode          string `json:"branch_code"`
-	BranchName          string `json:"branch_name"`
-	WarehouseCode       string `json:"warehouse_code"`
-	WarehouseName       string `json:"warehouse_name"`
-	OwnerEmail          string `json:"owner_email"`
-	OwnerFullName       string `json:"owner_full_name"`
-	OwnerPassword       string `json:"owner_password"`
+	// GSTIN/GSTStateCode were added to app.BootstrapParams in Stage 5b
+	// but never threaded through this request struct — a real bug found
+	// by actually running a fresh bootstrap through the real HTTP API,
+	// not just calling the service layer directly the way the
+	// integration test fixture does. Without these, GSTStateCode stays
+	// permanently empty with no way to set it afterward either (no
+	// PUT/PATCH existed for legal entities until this same pass added
+	// one), so every real signup's first invoice finalize failed with a
+	// tax_documents_supplier_state_code_fkey violation — the single most
+	// core feature of a billing app, broken for every real user.
+	GSTIN         string `json:"gstin,omitempty"`
+	GSTStateCode  string `json:"gst_state_code,omitempty"`
+	BranchCode    string `json:"branch_code"`
+	BranchName    string `json:"branch_name"`
+	WarehouseCode string `json:"warehouse_code"`
+	WarehouseName string `json:"warehouse_name"`
+	OwnerEmail    string `json:"owner_email"`
+	OwnerFullName string `json:"owner_full_name"`
+	OwnerPassword string `json:"owner_password"`
 }
 
 func (h *Handlers) bootstrap(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +129,8 @@ func (h *Handlers) bootstrap(w http.ResponseWriter, r *http.Request) {
 		DefaultTimezone:     req.DefaultTimezone,
 		LegalEntityName:     req.LegalEntityName,
 		CountryCode:         req.CountryCode,
+		GSTIN:               req.GSTIN,
+		GSTStateCode:        req.GSTStateCode,
 		BranchCode:          req.BranchCode,
 		BranchName:          req.BranchName,
 		WarehouseCode:       req.WarehouseCode,

@@ -69,7 +69,7 @@ func newTestSalesServices(t *testing.T) (*salesapp.Service, *inventoryapp.Servic
 	inventorySvc := newTestInventoryService(t)
 
 	gstRateRepo := gstindiapg.NewTaxRateRepo(sharedPool)
-	gstindiaSvc := gstindiaapp.NewService(sharedPool, gstRateRepo, checker, recorder)
+	gstindiaSvc := gstindiaapp.NewService(sharedPool, gstRateRepo, gstindiapg.NewStateRepo(sharedPool), checker, recorder)
 	gstEngine := gstindia.NewEngine(gstRateRepo, gstindiapg.NewStateRepo(sharedPool))
 	taxationSvc := taxationapp.NewService(
 		sharedPool, gstEngine,
@@ -146,7 +146,7 @@ func setupSalesFixture(t *testing.T, ctx context.Context) salesFixture {
 
 	checker := permissions.NewChecker(permissions.NewPGStore(sharedPool), sharedPool)
 	recorder := audit.NewPGRecorder(sharedPool)
-	gstindiaSvc := gstindiaapp.NewService(sharedPool, gstindiapg.NewTaxRateRepo(sharedPool), checker, recorder)
+	gstindiaSvc := gstindiaapp.NewService(sharedPool, gstindiapg.NewTaxRateRepo(sharedPool), gstindiapg.NewStateRepo(sharedPool), checker, recorder)
 	if _, err := gstindiaSvc.CreateRate(ctx, principal, gstindiaapp.CreateRateParams{
 		HSNSACCode: hsn, Classification: gstindiadomain.ClassificationTaxable,
 		GSTRate: mustDecimal(t, "18"), CessRate: mustDecimal(t, "0"), ValidFrom: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),

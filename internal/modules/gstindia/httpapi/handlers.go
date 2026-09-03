@@ -25,6 +25,7 @@ func NewHandlers(svc *app.Service) *Handlers { return &Handlers{svc: svc} }
 func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/gst/tax-rates", h.createRate)
 	r.Get("/gst/tax-rates/{hsn}", h.listRatesByHSN)
+	r.Get("/gst/state-codes", h.listStateCodes)
 }
 
 func decodeJSON[T any](r *http.Request) (T, error) {
@@ -107,6 +108,15 @@ func (h *Handlers) createRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, rate)
+}
+
+func (h *Handlers) listStateCodes(w http.ResponseWriter, r *http.Request) {
+	states, err := h.svc.ListStateCodes(r.Context())
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"state_codes": states})
 }
 
 func (h *Handlers) listRatesByHSN(w http.ResponseWriter, r *http.Request) {

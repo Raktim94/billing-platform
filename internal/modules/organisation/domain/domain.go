@@ -81,6 +81,13 @@ type LegalEntityRepository interface {
 	Create(ctx context.Context, le *LegalEntity) error
 	GetByID(ctx context.Context, orgID, id uuid.UUID) (*LegalEntity, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*LegalEntity, error)
+	// UpdateGSTDetails is the fix path for a legal entity bootstrapped
+	// (or created) before its GSTIN/state code were known — genuinely
+	// necessary: without this, a legal entity with no GSTStateCode can
+	// NEVER finalize a sales document (tax_documents.supplier_state_code
+	// has a NOT NULL foreign key to gst_state_codes), and until this was
+	// added there was no way to set it after the fact at all.
+	UpdateGSTDetails(ctx context.Context, orgID, id uuid.UUID, gstin, gstStateCode string) (*LegalEntity, error)
 }
 
 type BranchRepository interface {

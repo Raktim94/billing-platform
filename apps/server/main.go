@@ -260,7 +260,7 @@ func run() error {
 	)
 
 	gstRateRepo := gstindiapg.NewTaxRateRepo(pool)
-	gstindiaSvc := gstindiaapp.NewService(pool, gstRateRepo, permissionsChecker, auditRecorder)
+	gstindiaSvc := gstindiaapp.NewService(pool, gstRateRepo, gstindiapg.NewStateRepo(pool), permissionsChecker, auditRecorder)
 	// gstindia.Engine is the TaxEngine implementation taxationSvc drives —
 	// taxation has no HTTP surface of its own (it's a cross-module
 	// library, not an end-user-facing API — docs/architecture.md §5), so
