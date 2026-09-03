@@ -1875,6 +1875,154 @@ paths:
       responses:
         "204": { description: Deactivated, no content. }
 
+  # ============================================================
+  # NOTIFICATIONS — share links (signed, expiring, revocable) and the
+  # queued send path (Email/SMS/WhatsApp provider interfaces, mock only
+  # — docs/TODO.md Stage 9). /share/{token} is the one deliberately
+  # UNAUTHENTICATED endpoint in this entire API (brief §21 — a share
+  # link's recipient has no session or API key by definition).
+  # Verified against internal/modules/notifications/httpapi/handlers.go.
+  # ============================================================
+  /share-links:
+    post:
+      tags: [Notifications]
+      summary: Create a signed, expiring share link for a document. The token is shown exactly once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [document_type, document_id]
+              properties:
+                document_type: { type: string }
+                document_id: { type: string, format: uuid }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { type: object, properties: { token: { type: string } } } } } }
+
+  /share-links/{id}:
+    delete:
+      tags: [Notifications]
+      summary: Revoke a share link immediately.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { status: { type: string, example: revoked } } } } } }
+
+  /share/{token}:
+    get:
+      tags: [Notifications]
+      summary: >
+        Redeem a share link — deliberately unauthenticated, the only such
+        endpoint in this API. Proves the token is valid and reports what
+        it grants access to; does not yet stream the shared document's
+        actual PDF bytes (a documented follow-up — every existing print/
+        report path requires a real permissions.Principal, which an
+        anonymous recipient doesn't have by definition).
+      security: []
+      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document_type: { type: string }
+                  document_id: { type: string, format: uuid }
+        "404":
+          description: LINK_INVALID — invalid, expired, or revoked.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /notifications/send:
+    post:
+      tags: [Notifications]
+      summary: Queue a notification (email/SMS/WhatsApp) for delivery. No real provider adapter is wired yet — mock only (docs/TODO.md Stage 9).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, recipient, document_type, document_id]
+              properties:
+                channel: { type: string, enum: [EMAIL, SMS, WHATSAPP] }
+                recipient: { type: string }
+                document_type: { type: string }
+                document_id: { type: string, format: uuid }
+                subject: { type: string }
+                body_html: { type: string }
+                template_name: { type: string, description: WhatsApp requires a pre-approved template (Business Platform shape), never freeform. }
+                template_args: { type: array, items: { type: string } }
+      responses:
+        "202": { description: Queued., content: { application/json: { schema: { type: object, properties: { status: { type: string, example: queued } } } } } }
+
+  # ============================================================
+  # WEBHOOKS — endpoint registration only; delivery itself is outbound,
+  # not a callable endpoint. Verified against
+  # internal/modules/webhooks/httpapi/handlers.go.
+  # ============================================================
+  /webhooks/endpoints:
+    post:
+      tags: [Webhooks]
+      summary: Register a webhook endpoint. The signing secret is shown exactly once (same principle as an API key's raw value).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, subscribed_events]
+              properties:
+                url: { type: string, format: uri }
+                subscribed_events:
+                  type: array
+                  items: { type: string }
+                  description: "Currently-wired producer events: invoice.finalized, einvoice.generated, einvoice.failed (docs/api.md — the brief's fuller event catalog isn't all wired yet)."
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  url: { type: string }
+                  subscribed_events: { type: array, items: { type: string } }
+                  signing_secret: { type: string, description: HMAC-SHA256 signing secret — store it now, it is never shown again. }
+        "400":
+          description: INVALID_REQUEST.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    get:
+      tags: [Webhooks]
+      summary: List webhook endpoints (signing secret never included).
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  endpoints:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        url: { type: string }
+                        subscribed_events: { type: array, items: { type: string } }
+                        is_active: { type: boolean }
+
+  /webhooks/endpoints/{id}:
+    delete:
+      tags: [Webhooks]
+      summary: Deactivate a webhook endpoint.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { status: { type: string, example: deactivated } } } } } }
+
 components:
   parameters:
     ReportFilterFrom:
