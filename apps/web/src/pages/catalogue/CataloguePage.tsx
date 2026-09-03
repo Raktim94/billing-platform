@@ -154,6 +154,7 @@ export function CataloguePage() {
         <input
           className={ui.input}
           placeholder="Search products…"
+          aria-label="Search products"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{ marginBottom: 12, maxWidth: 360 }}
@@ -171,8 +172,8 @@ export function CataloguePage() {
             <table className={ui.table}>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>HSN/SAC</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">HSN/SAC</th>
                 </tr>
               </thead>
               <tbody>

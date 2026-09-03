@@ -75,11 +75,11 @@ export function SalesDetailPage({ id }: { id: string }) {
               <table className={ui.table}>
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>HSN/SAC</th>
-                    <th>Qty</th>
-                    <th>Rate</th>
-                    <th>Total</th>
+                    <th scope="col">#</th>
+                    <th scope="col">HSN/SAC</th>
+                    <th scope="col">Qty</th>
+                    <th scope="col">Rate</th>
+                    <th scope="col">Total</th>
                   </tr>
                 </thead>
                 <tbody>

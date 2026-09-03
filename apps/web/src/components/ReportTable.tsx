@@ -39,7 +39,7 @@ export function ReportTable({ path, emptyLabel }: { path: string; emptyLabel?: s
         <thead>
           <tr>
             {query.data.headers.map((h, i) => (
-              <th key={i}>{h}</th>
+              <th key={i} scope="col">{h}</th>
             ))}
           </tr>
         </thead>

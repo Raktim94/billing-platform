@@ -1,3 +1,25 @@
+/* Bypass Blocks (WCAG 2.4.1) — offscreen until keyboard-focused, so a
+   screen-reader/keyboard user can jump past the primary nav straight to
+   page content instead of tabbing through every nav item on every page. */
+.skipLink {
+  position: absolute;
+  top: -1000px;
+  left: var(--space-3);
+  z-index: 100;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skipLink:focus-visible {
+  top: var(--space-3);
+}
+
 .shell {
   display: grid;
   grid-template-columns: var(--nav-width) 1fr;

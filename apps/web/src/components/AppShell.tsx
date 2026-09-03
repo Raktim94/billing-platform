@@ -47,8 +47,21 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (createRef.current && !createRef.current.contains(e.target as Node)) setCreateOpen(false);
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
     };
+    // Escape closes whichever popup is open — expected keyboard behavior
+    // for menus/listboxes per the ARIA Authoring Practices Guide; without
+    // this a keyboard user's only way out is tabbing through every item.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setMenuOpen(false);
+      setCreateOpen(false);
+      setSearchOpen(false);
+    };
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [menuOpen, createOpen, searchOpen]);
 
   // Global search — customers and products in one combined dropdown
@@ -78,6 +91,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={styles.shell}>
+      <a href="#main-content" className={styles.skipLink}>
+        Skip to main content
+      </a>
       <nav className={styles.nav} aria-label="Primary">
         <div className={styles.wordmark}>
           <span className={styles.mark} aria-hidden="true" />
@@ -89,6 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 to={item.to}
                 className={`${styles.navLink} ${pathname === item.to ? styles.navLinkActive : ""}`.trim()}
+                aria-current={pathname === item.to ? "page" : undefined}
               >
                 {item.label}
               </Link>
@@ -112,11 +129,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             onFocus={() => setSearchOpen(true)}
           />
           {searchOpen && searchQuery.trim().length >= 2 && searchResults.length > 0 ? (
-            <ul className={styles.userDropdown} role="listbox" style={{ left: 0, right: "auto", top: "calc(100% + 4px)", minWidth: 280 }}>
+            <ul
+              className={styles.userDropdown}
+              role="menu"
+              aria-label="Search results"
+              style={{ left: 0, right: "auto", top: "calc(100% + 4px)", minWidth: 280 }}
+            >
               {searchResults.map((r) => (
                 <li key={`${r.kind}-${r.id}`}>
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={() => {
                       setSearchOpen(false);
                       setSearchQuery("");
@@ -185,7 +208,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className={styles.main}>{children}</main>
+      <main id="main-content" className={styles.main} tabIndex={-1}>
+        {children}
+      </main>
     </div>
   );
 }

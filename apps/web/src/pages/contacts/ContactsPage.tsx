@@ -107,6 +107,7 @@ export function ContactsPage() {
         <input
           className={ui.input}
           placeholder="Search by name or phone…"
+          aria-label="Search contacts"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{ marginBottom: 12, maxWidth: 360 }}
@@ -124,10 +125,10 @@ export function ContactsPage() {
             <table className={ui.table}>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Phone</th>
-                  <th>Email</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Phone</th>
+                  <th scope="col">Email</th>
                 </tr>
               </thead>
               <tbody>

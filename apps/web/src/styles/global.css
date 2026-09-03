@@ -61,6 +61,21 @@ textarea {
   color: inherit;
 }
 
+/* Visually hidden but still reachable by assistive tech — for a text
+   equivalent of a canvas/SVG chart (WCAG 1.1.1), not for hiding real
+   interactive controls (those need proper focus handling, not this). */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Visible focus, always — brief §49, never rely on a browser default that
    design systems often accidentally suppress. */
 :focus-visible {

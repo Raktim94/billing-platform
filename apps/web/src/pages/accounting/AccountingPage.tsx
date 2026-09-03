@@ -57,9 +57,9 @@ export function AccountingPage() {
             <table className={ui.table}>
               <thead>
                 <tr>
-                  <th>Code</th>
-                  <th>Name</th>
-                  <th>Type</th>
+                  <th scope="col">Code</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Type</th>
                 </tr>
               </thead>
               <tbody>

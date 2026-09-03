@@ -49,6 +49,15 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
   const [productResults, setProductResults] = useState<BillingLookupResult[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (!showCustomerResults) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowCustomerResults(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showCustomerResults]);
+
   const doc = useQuery({
     queryKey: ["sales-document", documentId],
     queryFn: () => api.get<{ document: SalesDocument; lines: SalesDocumentLine[] }>(`/sales/documents/${documentId}`),
@@ -221,11 +230,12 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
                   autoComplete="off"
                 />
                 {showCustomerResults && customerSearch.data?.parties.length ? (
-                  <ul className={styles.dropdown} role="listbox">
+                  <ul className={styles.dropdown} role="menu" aria-label="Customer results">
                     {customerSearch.data.parties.map((p) => (
                       <li key={p.ID}>
                         <button
                           type="button"
+                          role="menuitem"
                           className={styles.dropdownItem}
                           onClick={() => {
                             setCustomer(p);
@@ -314,11 +324,11 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
                 <table className={ui.table}>
                   <thead>
                     <tr>
-                      <th>#</th>
-                      <th>HSN/SAC</th>
-                      <th>Qty</th>
-                      <th>Rate</th>
-                      <th>Total</th>
+                      <th scope="col">#</th>
+                      <th scope="col">HSN/SAC</th>
+                      <th scope="col">Qty</th>
+                      <th scope="col">Rate</th>
+                      <th scope="col">Total</th>
                     </tr>
                   </thead>
                   <tbody>

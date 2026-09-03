@@ -233,10 +233,10 @@ export function PurchasesPage() {
                   <table className={ui.table}>
                     <thead>
                       <tr>
-                        <th>#</th>
-                        <th>Qty</th>
-                        <th>Cost</th>
-                        <th>Total</th>
+                        <th scope="col">#</th>
+                        <th scope="col">Qty</th>
+                        <th scope="col">Cost</th>
+                        <th scope="col">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -295,10 +295,10 @@ export function PurchasesPage() {
             <table className={ui.table}>
               <thead>
                 <tr>
-                  <th>Number</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Date</th>
+                  <th scope="col">Number</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Date</th>
                 </tr>
               </thead>
               <tbody>

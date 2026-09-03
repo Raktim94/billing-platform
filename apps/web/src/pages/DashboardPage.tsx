@@ -128,6 +128,31 @@ function SalesTrendChart({ rows, dark }: { rows: string[][]; dark: boolean }) {
   const days = rows.map((r) => r[0] ?? "");
   const totals = rows.map((r) => moneyToApproxNumber({ amount: r[4] ?? "0", currency: "INR" }));
 
+  // echarts-for-react renders to a bare <canvas> with no text alternative
+  // — a screen-reader user gets nothing from it (WCAG 1.1.1). This table
+  // carries the same day/total data as real, readable markup; the chart
+  // itself is hidden from assistive tech below so the two aren't both
+  // announced.
+  const accessibleTable = (
+    <table className="srOnly">
+      <caption>Daily sales total, most recent {rows.length} day(s)</caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={r[0] ?? i}>
+            <td>{r[0]}</td>
+            <td>{formatMoney({ amount: r[4] ?? "0", currency: "INR" })}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   const option = {
     grid: { left: 48, right: 16, top: 24, bottom: 32 },
     xAxis: {
@@ -155,5 +180,12 @@ function SalesTrendChart({ rows, dark }: { rows: string[][]; dark: boolean }) {
     ],
   };
 
-  return <ReactECharts option={option} style={{ height: 260 }} notMerge />;
+  return (
+    <>
+      {accessibleTable}
+      <div aria-hidden="true">
+        <ReactECharts option={option} style={{ height: 260 }} notMerge />
+      </div>
+    </>
+  );
 }

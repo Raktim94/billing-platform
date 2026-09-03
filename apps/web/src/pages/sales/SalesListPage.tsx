@@ -44,11 +44,11 @@ export function SalesListPage() {
             <table className={ui.table}>
               <thead>
                 <tr>
-                  <th>Number</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                  <th>Total</th>
+                  <th scope="col">Number</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Date</th>
+                  <th scope="col">Total</th>
                 </tr>
               </thead>
               <tbody>
