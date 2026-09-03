@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	accountingapp "billing-platform/internal/modules/accounting/app"
 	accountinghttp "billing-platform/internal/modules/accounting/httpapi"
@@ -366,7 +367,18 @@ func run() error {
 	}
 
 	router.Route("/api/v1", func(r chi.Router) {
-		identityHandlers := identityhttp.NewHandlers(identitySvc, cfg.Session.CookieName, cfg.Session.Secure)
+		identityHandlers := identityhttp.NewHandlers(identitySvc, cfg.Session.CookieName, cfg.Session.Secure).
+			WithPostBootstrapHook(func(ctx context.Context, orgID, actorUserID uuid.UUID) error {
+				// The layering-safe wiring docs/adr/0003-accounting-
+				// integration-point.md's point 6 describes: identity can't
+				// import accounting directly, but this composition root can.
+				// The bootstrap Owner role holds every permission (Stage 2),
+				// so this principal is authorized the same way a real owner
+				// calling POST /accounting/accounts/ensure-default-chart
+				// themselves would be.
+				owner := permissions.Principal{UserID: actorUserID, OrganisationID: orgID}
+				return accountingSvc.EnsureDefaultChartOfAccounts(ctx, owner, orgID)
+			})
 		identityHandlers.Mount(r, bootstrapEnabled)
 		// Share-link redemption is deliberately UNAUTHENTICATED (brief
 		// §21 — the whole point is a recipient with no session/API key);

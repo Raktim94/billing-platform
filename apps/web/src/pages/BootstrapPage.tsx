@@ -5,6 +5,7 @@ import { z } from "zod";
 import { useNavigate } from "@tanstack/react-router";
 import styles from "./auth.module.css";
 import { api, ApiError } from "../lib/api-client";
+import { GST_STATE_CODES } from "../lib/gstStateCodes";
 
 /**
  * First-run setup: creates the first organisation + owner user via
@@ -20,6 +21,13 @@ const schema = z
   .object({
     organisationName: z.string().min(1, "Business name is required"),
     legalEntityName: z.string().min(1, "Legal entity name is required"),
+    // Required, not just GSTIN — every invoice needs its issuing state to
+    // determine intra- vs. inter-state tax, regardless of whether the
+    // business is GST-registered at all (docs/adr/0007). Never leave
+    // this uncollected: a legal entity with no state cannot finalize a
+    // single invoice, which is exactly the bug this form now closes.
+    gstStateCode: z.string().min(1, "Select your business's state"),
+    gstin: z.string().optional(),
     branchName: z.string().min(1, "Branch name is required"),
     warehouseName: z.string().min(1, "Warehouse name is required"),
     ownerFullName: z.string().min(1, "Your name is required"),
@@ -37,6 +45,17 @@ interface BootstrapResponse {
   organisation_id: string;
 }
 
+/** Same auto-slug idiom CataloguePage uses for an unset SKU code — branch_code/
+ * warehouse_code are NOT NULL (warehouses.code is even UNIQUE per organisation)
+ * but this form never collected them at all (docs/adr/0007's sibling gap). */
+function slugCode(name: string, maxLen: number): string {
+  return name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxLen);
+}
+
 export function BootstrapPage() {
   const navigate = useNavigate();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -51,8 +70,19 @@ export function BootstrapPage() {
     try {
       await api.post<BootstrapResponse>("/auth/bootstrap", {
         organisation_name: values.organisationName,
+        // default_currency_code has no database default (NOT NULL, no
+        // DEFAULT) — was never sent here either, same unwired-field class
+        // as gst_state_code (docs/adr/0007). INR is the only sensible
+        // default for a platform whose target market is India-first.
+        default_currency_code: "INR",
+        default_timezone: "Asia/Kolkata",
         legal_entity_name: values.legalEntityName,
+        country_code: "IN",
+        gst_state_code: values.gstStateCode,
+        gstin: values.gstin || undefined,
+        branch_code: slugCode(values.branchName, 16) || "BR1",
         branch_name: values.branchName,
+        warehouse_code: slugCode(values.warehouseName, 16) || "WH1",
         warehouse_name: values.warehouseName,
         owner_full_name: values.ownerFullName,
         owner_email: values.ownerEmail,
@@ -91,6 +121,26 @@ export function BootstrapPage() {
             <label htmlFor="legalEntityName">Legal entity name</label>
             <input id="legalEntityName" {...register("legalEntityName")} />
             {errors.legalEntityName ? <p className={styles.error}>{errors.legalEntityName.message}</p> : null}
+          </div>
+          <div className={styles.grid2}>
+            <div className={styles.field}>
+              <label htmlFor="gstStateCode">Business state</label>
+              <select id="gstStateCode" {...register("gstStateCode")} defaultValue="">
+                <option value="" disabled>
+                  Select a state…
+                </option>
+                {GST_STATE_CODES.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              {errors.gstStateCode ? <p className={styles.error}>{errors.gstStateCode.message}</p> : null}
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="gstin">GSTIN (optional)</label>
+              <input id="gstin" placeholder="Leave blank if not GST-registered" {...register("gstin")} />
+            </div>
           </div>
           <div className={styles.grid2}>
             <div className={styles.field}>

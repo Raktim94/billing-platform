@@ -1,16 +1,19 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"billing-platform/internal/modules/identity/app"
 	"billing-platform/internal/modules/identity/domain"
 	httpx "billing-platform/internal/platform/http"
+	"billing-platform/internal/platform/logging"
 	"billing-platform/internal/platform/permissions"
 )
 
@@ -18,10 +21,28 @@ type Handlers struct {
 	svc          *app.Service
 	cookieName   string
 	cookieSecure bool
+	// postBootstrap runs after a successful Bootstrap, before the HTTP
+	// response is written — the layering-safe hook docs/adr/0003-accounting-
+	// integration-point.md's point 6 describes: identity (Stage 2,
+	// foundational) can't import accounting (Stage 6) without inverting
+	// this codebase's module layering, but apps/server's composition root
+	// is allowed to depend on every module, so it injects this instead.
+	// Nil-guarded — a caller that doesn't wire one still gets a working
+	// bootstrap, just without the chained step.
+	postBootstrap func(ctx context.Context, orgID, actorUserID uuid.UUID) error
 }
 
 func NewHandlers(svc *app.Service, cookieName string, cookieSecure bool) *Handlers {
 	return &Handlers{svc: svc, cookieName: cookieName, cookieSecure: cookieSecure}
+}
+
+// WithPostBootstrapHook returns a copy of h with fn wired in — same
+// WithX-returns-a-copy convention as ewaybill.Service.WithFreePortal and
+// sales/httpapi.Handlers.WithEWayBill elsewhere in this codebase.
+func (h *Handlers) WithPostBootstrapHook(fn func(ctx context.Context, orgID, actorUserID uuid.UUID) error) *Handlers {
+	cp := *h
+	cp.postBootstrap = fn
+	return &cp
 }
 
 // Mount registers identity's routes. bootstrapEnabled gates
@@ -142,6 +163,21 @@ func (h *Handlers) bootstrap(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
+	}
+	if h.postBootstrap != nil {
+		if err := h.postBootstrap(r.Context(), result.OrganisationID, result.OwnerUserID); err != nil {
+			// The organisation/owner were genuinely created — surfacing
+			// this as a hard failure here would tell the caller bootstrap
+			// failed when it actually mostly succeeded. Same "degrade,
+			// don't block the thing that already happened" principle as
+			// sales/httpapi's enrichWithEWayBill. Logged loudly (not
+			// silently swallowed) since the fallback — the operator/owner
+			// manually calling POST /accounting/accounts/ensure-default-chart
+			// (docs/adr/0003) — only works if someone actually knows this
+			// failed.
+			logging.FromContext(r.Context()).ErrorContext(r.Context(), "post-bootstrap hook failed",
+				"organisation_id", result.OrganisationID, "error", err)
+		}
 	}
 	httpx.WriteJSON(w, http.StatusCreated, map[string]any{
 		"organisation_id": result.OrganisationID,
