@@ -343,6 +343,108 @@ Credentials (client ID/secret, GSP tokens) live in
 adapter process boundary, never returned through any API response, never
 logged (brief §9, §60).
 
+## 9b. Free-first e-Way Bill portal workflow (added 2026-09-03)
+
+**Product principle:** "One invoice. One workflow. Zero duplicate data
+entry." — and critically, **API access to e-Way Bill generation must be
+optional, never required.** A small business paying nothing for a paid
+GSP/API integration must still get a professional, low-friction e-Way Bill
+experience. This directly extends §9 above; it does not replace it — the
+`EInvoiceProvider`/`EWayBillProvider` interfaces built in Stage 8 remain the
+`AUTOMATIC_API` path. This section adds a second, **default**, production
+mode that needs no paid API at all.
+
+**Two production modes** (a per-organisation setting, `FREE_PORTAL` is the
+default):
+- `FREE_PORTAL` — the application prepares the exact upload file the
+  official government e-Way Bill portal's bulk-upload feature accepts,
+  hands the user a one-click path to the portal, and later imports the
+  government's own result (file, PDF, or manual entry) back onto the
+  invoice. No API credentials, no paid integration, ever required for this
+  path.
+- `AUTOMATIC_API` — optional; the existing Stage 8 `EWayBillProvider` flow.
+  If it fails at runtime, the user is offered `FREE_PORTAL` as an immediate
+  fallback using the *same* already-prepared canonical data — never a
+  re-entry of the invoice.
+- `MOCK`/`SANDBOX` remain internal, test/dev-only, as built in Stage 8.
+
+**Canonical model, not two parallel schemas.** A single
+`CanonicalEWayBill` (supplier, recipient, document, dispatch, delivery,
+items, tax, values, transport) is built once from a **finalized invoice's
+immutable tax/inventory snapshot** (never from live, possibly-since-edited
+product/customer master data — the same immutability principle as §55/§7:
+if the prepared file is ever regenerated later, e.g. because a user's local
+copy was lost, it must reproduce byte-identical figures from the original
+snapshot, not silently drift because someone edited the customer's address
+since). Format-specific mappers (`PortalExportProvider`, the existing API
+provider, sandbox, mock) all consume the same canonical struct — the
+invoice/domain layer never depends on which mode is active.
+
+**Eligibility is a versioned rule engine, not a hardcoded threshold.**
+`EvaluateEWayBillRequirement(invoice) -> NOT_REQUIRED | READY |
+NEEDS_INFORMATION | REQUIRED`. The ₹50,000 figure (or whatever the current
+rule is) lives in versioned rule data with an effective-date range — same
+pattern as `tax_rate_master`'s `valid_from`/`valid_to` — never a bare `if
+amount > 50000` literal in Go source, because this is exactly the kind of
+government-set threshold brief Rule 13 warns against hardcoding.
+
+**Extended status model** (supersedes/extends Stage 8's DRAFT→...→CLOSED
+machine specifically for the free-portal path): `NOT_REQUIRED`,
+`NEEDS_INFORMATION`, `READY`, `PREPARING`, `PORTAL_FILE_READY`,
+`AWAITING_PORTAL_COMPLETION`, `GENERATED`, `CANCELLED`, `EXPIRED`, plus the
+API-mode-specific `API_QUEUED`/`API_GENERATING`/`API_NEEDS_ATTENTION`. Still
+one persisted, explicit column — not inferred.
+
+**Portal file generation is versioned exactly like the tax/GST schema is**
+(`docs/research.md`'s point about GSTN changing schemas with short notice
+applies equally to the portal's bulk-upload format): `ewaybill/portal/
+{schema,validators,mappers,versions}/`, a `PortalSchemaVersion` row with
+`effective_from`/`effective_until`, so a portal format change is a new
+mapper version, not a rewrite of invoice logic. Enforce the portal's actual
+file-size limit; split into multiple numbered batch files
+(`EWB-BATCH-001.json`, `...-002.json`, ...) if a bulk export would exceed
+it. Filenames are always human-recognizable
+(`EWB-<invoice-number>-<date>.json`), never an opaque hash.
+
+**Hard security constraints (non-negotiable, brief-equivalent Rules
+apply):**
+- Never store a government-portal username/password.
+- Never automate government portal login — no Selenium/Playwright/headless
+  browser driving the authenticated production portal, no CAPTCHA/OTP/2FA
+  bypass, no session-cookie copying. The user always authenticates to the
+  real government site themselves, in their own browser tab, opened by us
+  but never proxied or wrapped.
+- The portal URL is backend-configured and allowlisted
+  (`GovernmentPortalService.GetOfficialEWayBillPortalURL()`), never a
+  user-editable arbitrary URL — prevents phishing via a spoofed "government
+  portal" link.
+- Never claim or promise a permanent authenticated deep-link into a
+  protected government page; degrade gracefully to "open the portal,
+  instruct the user where to navigate" if no stable deep-link is documented
+  as officially supported.
+
+**Imported results are verified before linking**, not trusted blindly: an
+imported government result (file or PDF) must match the target invoice's
+number/date/GSTIN/document type before being attached; a mismatch blocks
+auto-linking and surfaces "this e-Way Bill appears to belong to another
+invoice" rather than silently attaching wrong data to the wrong invoice.
+
+**New master data**: `vehicles` and `transporters` (org-scoped, RLS-
+protected, standard CRUD), plus "smart defaults" (recently-used vehicle,
+customer-preferred transporter/vehicle) resolved as a plain preference
+lookup, not a new architectural mechanism.
+
+**Frontend implication, explicitly deferred, not forgotten:** the detailed
+UX this section's source spec describes (an EWB card on the invoice screen,
+a settings page, a "portal assistant" screen, a pending-tasks center, a
+bulk-preparation queue, desktop file-location handling) is real product
+scope but cannot be built yet — `apps/web` does not exist as of this
+writing (Stage 10). The backend pieces above (canonical model, eligibility
+engine, portal file generation, vehicle/transporter masters, import/verify,
+audit) are buildable now and are tracked as their own stage in
+`docs/TODO.md`; the UI work is tracked under Stage 10/11 so it isn't lost
+between now and when the web app exists to hang it on.
+
 ## 10. Authentication / security architecture
 
 - **Password storage**: Argon2id. Starting profile: memory ≥ 19 MiB,

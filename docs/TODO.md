@@ -95,6 +95,25 @@ part of finishing a stage, not after the fact.
 - [x] Fixture/schema round-trip tests against the mock adapter's canned shapes (IRN, ack, QR, GSTIN, EWB number/validity/Part-B); **no production or sandbox credentials used in the automated test suite** (brief Rule 17) — Scenario J/K's spirit satisfied via the mock adapter per the brief's own "use sandbox/mock adapters" instruction, not by calling the real NIC sandbox
 - [ ] **Follow-ups, not done**: `einvoice_provider_credentials` (encrypted-at-rest table) exists but `apps/worker` currently sources sandbox credentials from env vars, not yet reading+decrypting per-legal-entity from that table; only `TAX_INVOICE` auto-enqueues e-Invoice generation (CREDIT_NOTE/DEBIT_NOTE e-invoicing is a real requirement, deferred); `purchases` documents aren't wired through this (only `sales`); e-Way Bill generation is a manually-triggered API call, not auto-enqueued from finalize (deliberate — no goods-movement-threshold business rule exists yet to decide *when* one is legally required, brief Rule 2)
 
+## Stage 8c — Free-First e-Way Bill Portal Workflow (backend) — added 2026-09-03
+New requirement, not in the original brief: API access to e-Way Bill generation
+must be optional — `FREE_PORTAL` mode (no paid API, prepare-and-hand-off to the
+official government portal, then import the result) is the default production
+mode; Stage 8's `AUTOMATIC_API` path stays as an optional accelerator with
+fallback to free mode on failure. Full reasoning and constraints in
+`docs/architecture.md` §9b — read that before starting, don't re-derive it.
+- [ ] `CanonicalEWayBill` model built from a finalized invoice's immutable snapshot (never live/mutable master data)
+- [ ] `EWayBillOrchestrator` + versioned eligibility rule engine (`EvaluateEWayBillRequirement` → NOT_REQUIRED/READY/NEEDS_INFORMATION/REQUIRED) — threshold/rules as versioned data (`valid_from`/`valid_until`), never a hardcoded `> ₹50,000` literal
+- [ ] `EWayBillPortalExporter` interface + `PortalExportProvider`: maps canonical model to the official portal bulk-upload format, versioned (`ewaybill/portal/{schema,validators,mappers,versions}/`), enforces file-size limits with batch-splitting, human-readable filenames (`EWB-<invoice-number>-<date>.json`)
+- [ ] Extended status model (NOT_REQUIRED/NEEDS_INFORMATION/READY/PREPARING/PORTAL_FILE_READY/AWAITING_PORTAL_COMPLETION/GENERATED/CANCELLED/EXPIRED/API_QUEUED/API_GENERATING/API_NEEDS_ATTENTION)
+- [ ] `vehicles` + `transporters` master data modules (org-scoped, RLS, CRUD) with smart-default resolution (recent vehicle, customer-preferred transporter/vehicle)
+- [ ] `GovernmentPortalService.GetOfficialEWayBillPortalURL()` — backend-configured, allowlisted, never user-editable
+- [ ] Import/verify flow: parse a government result file/PDF or accept manual entry, verify it matches the target invoice (number/date/GSTIN/doc type) before linking, reject mismatches explicitly
+- [ ] Hard constraints, verify none of these are violated anywhere in the implementation: no stored government-portal credentials, no automated/headless portal login, no CAPTCHA/OTP/2FA bypass, no session-cookie copying
+- [ ] Audit every step (eligibility evaluated, upload prepared, portal opened, result imported/linked, manual entry, API↔free fallback) via the existing `internal/platform/audit`
+- [ ] API-failure → free-portal fallback: same canonical data, no invoice re-entry — test this explicitly
+- [ ] Unit + integration tests, RLS on new tables, and a test proving regeneration after "file lost" reproduces byte-identical figures from the immutable snapshot (not from current, possibly-edited masters)
+
 ## Stage 9 — Integrations
 - [ ] `internal/modules/notifications`: EmailProvider, SMSProvider, WhatsAppProvider interfaces; signed, expiring, revocable share links
 - [ ] WhatsApp: official Business Platform integration only, no Web scraping; share logged (who/what/recipient/status/timestamp)
@@ -108,6 +127,7 @@ part of finishing a stage, not after the fact.
 - [ ] `deploy/compose/docker-compose.yml`: app + postgres by default, optional profiles (redis, minio, reverse-proxy) — reverse proxy explicitly NOT default (`docs/architecture.md` §12)
 - [ ] `deploy/casaos/docker-compose.yml`: full `x-casaos` block, amd64+arm64, `docker compose config -q` passing in CI
 - [ ] `apps/web`: React/Vite/TanStack Query+Router/RHF/Zod build wired to the API (this is also where Stage 5-9's UI actually gets built — tracked here for the packaging step, UI work itself threads through earlier stages as each module ships)
+- [ ] Free-first e-Way Bill UX (backend built in Stage 8c, `docs/architecture.md` §9b) — once `apps/web` exists: invoice-screen EWB card (Ready/Needs Information/Complete-on-Portal states), Settings → GST → E-Way Bill page (Free Government Portal selected by default, Automatic API as the alternate radio), the "portal assistant" post-click screen (prepared filename, open-portal button, popup-blocked fallback), a pending-tasks center for unfinished EWBs, a bulk-prepare queue, vehicle/transporter master screens with autocomplete, result-import UI (file/PDF/manual) with the mismatch-warning path, first-time-use explainer shown once — never expose "JSON"/"API"/technical terms in this UI, plain language only per §9b
 - [ ] `apps/desktop`: Tauri 2 thin shell around the same web build, zero business logic duplicated
 - [ ] Windows packaging prep (MSIX path documented, not signed/submitted yet)
 
