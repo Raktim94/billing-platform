@@ -1,0 +1,170 @@
+# Default self-hosted deployment: app + worker + postgres, nothing else.
+# No bundled reverse proxy (docs/architecture.md §12) — CasaOS and most
+# cloud/VPS setups already have one; TLS termination is the operator's job.
+# Optional extras (redis, minio, a reverse proxy) are opt-in via
+# `--profile <name>`, never started by a plain `docker compose up -d`.
+#
+# Copy .env.example to .env in this directory before first run; Compose
+# reads .env automatically. Never commit a real .env.
+
+name: billing-platform
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: billing
+      # POSTGRES_USER becomes the DB's initial superuser AND the owner of
+      # every table the migrate service creates — used ONLY by the
+      # one-shot `migrate` service below, never by app/worker at runtime.
+      # See migrations/0001_organisation_hierarchy.up.sql's DEPLOYMENT
+      # REQUIREMENT: a runtime connection as the table owner silently
+      # bypasses every Row-Level Security policy in this schema.
+      POSTGRES_USER: billing_migrator
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set a real password in .env}"
+      # Read by deploy/compose/postgres-init/01-create-runtime-role.sh on
+      # first boot only, to create the separate, non-owning runtime role.
+      BILLING_APP_PASSWORD: "${BILLING_APP_PASSWORD:?set a real password in .env}"
+    volumes:
+      # Postgres 18's official image expects a single mount at
+      # /var/lib/postgresql (not the older .../data path) — it places data
+      # in a major-version-specific subdirectory itself, to support
+      # pg_upgrade --link across versions. Learned by actually running
+      # this: the old-style mount path starts the container but it never
+      # passes its healthcheck, logging "these Docker images are
+      # configured to store database data in a format which is compatible
+      # with pg_ctlcluster... there appears to be PostgreSQL data in
+      # /var/lib/postgresql/data (unused mount/volume)".
+      - postgres-data:/var/lib/postgresql
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing_migrator -d billing"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: applies pending migrations as the table-owning role, then
+  # exits. app/worker below depend on this completing successfully and
+  # connect as the separate billing_app role instead — the actual fix for
+  # the RLS-ownership bypass documented above, not just a comment about it.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/server.Dockerfile
+    command: ["-migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_DSN: "postgres://billing_migrator:${POSTGRES_PASSWORD:?set a real password in .env}@postgres:5432/billing?sslmode=disable"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/server.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      HTTP_PORT: "8080"
+      # billing_app, NOT billing_migrator — this connection must not own
+      # the tables it queries, or RLS is silently a no-op for it.
+      DATABASE_DSN: "postgres://billing_app:${BILLING_APP_PASSWORD:?set a real password in .env}@postgres:5432/billing?sslmode=disable"
+      # Migrations already ran via the `migrate` service above, as the
+      # owning role — app/worker must NOT also attempt them (billing_app
+      # has no schema-modification privileges, by design, and shouldn't).
+      DATABASE_AUTO_MIGRATE: "false"
+      SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-false}"
+      AEAD_ENCRYPTION_KEY: "${AEAD_ENCRYPTION_KEY:?generate one: openssl rand -base64 32}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      ENABLE_BOOTSTRAP: "${ENABLE_BOOTSTRAP:-true}"
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/worker.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_DSN: "postgres://billing_app:${BILLING_APP_PASSWORD:?set a real password in .env}@postgres:5432/billing?sslmode=disable"
+      AEAD_ENCRYPTION_KEY: "${AEAD_ENCRYPTION_KEY:?generate one: openssl rand -base64 32}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      # Optional government e-Invoice sandbox integration (Stage 8) — leave
+      # unset unless you're specifically testing that path. Never point
+      # EINVOICE_PROVIDER at anything but "mock" or "sandbox" in this
+      # compose file; production credentials belong in a deployment's own
+      # secret manager, not a committed file.
+      EINVOICE_PROVIDER: "${EINVOICE_PROVIDER:-mock}"
+
+  # --- optional profiles, off by default ---
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    profiles: [redis]
+    volumes:
+      - redis-data:/data
+    # Forward-looking: nothing in the app reads REDIS_URL yet (no
+    # horizontal-scaling session/cache store is wired up as of Stage 10).
+    # This service exists so a deployment that WILL need it later can
+    # provision it now without a compose-file change; it's inert until
+    # something actually connects to it.
+
+  minio:
+    image: minio/minio:RELEASE.2026-08-13T00-00-00Z
+    restart: unless-stopped
+    profiles: [minio]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-billing}"
+      # Soft default, not `:?required` — Compose interpolates every
+      # service's environment block regardless of which profile is
+      # active, so a hard requirement here would break plain `docker
+      # compose config`/`up` even when minio is never started (the same
+      # gotcha this project's sibling nodedr-pos hit with its Cloudflare
+      # Tunnel profile). Still: set a real MINIO_ROOT_PASSWORD in .env
+      # before actually enabling this profile.
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-changeme-before-enabling-minio-profile}"
+    volumes:
+      - minio-data:/data
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    # Forward-looking, same as redis: brief §41's S3StorageProvider file-
+    # storage abstraction isn't built yet (no internal/platform/files
+    # package exists as of Stage 10). This gives a self-hoster without
+    # real S3 an S3-compatible endpoint ready for when it is.
+
+  reverse-proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: [reverse-proxy]
+    depends_on:
+      - app
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile.example:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    # Opt-in only, per docs/architecture.md §12 — most deployments already
+    # sit behind their own proxy (CasaOS's own, or an existing
+    # Caddy/Traefik/nginx/ALB). Enable with:
+    #   cp deploy/compose/Caddyfile.example deploy/compose/Caddyfile
+    #   # edit Caddyfile: replace the placeholder domain
+    #   docker compose --profile reverse-proxy up -d
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  caddy-data:

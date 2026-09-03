@@ -1,0 +1,180 @@
+# CasaOS/ZimaOS app store manifest. Structure verified against this
+# project's sibling, nodedr-pos's real, already-submitted CasaOS manifest
+# (~/nodedr-pos/casaos/docker-compose.yml) — not guessed from memory.
+#
+# Unlike deploy/compose/docker-compose.yml (which `build:`s from source for
+# a self-hosted `git clone` flow), CasaOS installs straight from this
+# compose file with no access to the repo — every image below is a
+# pre-built, version-pinned GHCR tag, published by
+# .github/workflows/docker-publish.yml. KNOWN GAP, not yet done: that
+# workflow hasn't run against a real tag yet as of this commit, so these
+# image tags don't exist on GHCR yet — this manifest is schema-validated
+# (`docker compose config -q`, passing) but not yet installable from a real
+# CasaOS instance. Cut a `v0.1.0` tag (or run the workflow via
+# workflow_dispatch) before actually submitting this to CasaOS-AppStore.
+#
+# Also a known gap: icon/thumbnail/screenshot assets below are placeholder
+# paths, not real design assets — this project has no logo yet (no
+# frontend exists as of Stage 10a). Replace before real submission.
+
+name: billing-platform
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: billing-platform-postgres
+    hostname: billing-platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: billing
+      POSTGRES_USER: billing_migrator
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      BILLING_APP_PASSWORD: "${BILLING_APP_PASSWORD}"
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/postgres
+        target: /var/lib/postgresql
+      - type: bind
+        source: /DATA/AppData/$AppID/postgres-init
+        target: /docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing_migrator -d billing"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - billing-platform
+    x-casaos:
+      envs:
+        - container: POSTGRES_PASSWORD
+          description:
+            en_US: Database password for the schema-owning role (migrations only — the app never connects as this role). Set a strong random value.
+        - container: BILLING_APP_PASSWORD
+          description:
+            en_US: Database password for the application's runtime role. Set a strong random value, different from POSTGRES_PASSWORD.
+      volumes:
+        - container: /var/lib/postgresql
+          description:
+            en_US: All business data — invoices, inventory, accounting, everything. Back this up.
+        - container: /docker-entrypoint-initdb.d
+          description:
+            en_US: One-time database setup script — do not modify.
+
+  migrate:
+    image: ghcr.io/raktim94/billing-platform-server:0.1.0
+    container_name: billing-platform-migrate
+    command: ["-migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_DSN: "postgres://billing_migrator:${POSTGRES_PASSWORD}@billing-platform-postgres:5432/billing?sslmode=disable"
+    networks:
+      - billing-platform
+    x-casaos:
+      envs: []
+
+  app:
+    image: ghcr.io/raktim94/billing-platform-server:0.1.0
+    container_name: billing-platform-app
+    hostname: billing-platform-app
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      HTTP_PORT: "8080"
+      DATABASE_DSN: "postgres://billing_app:${BILLING_APP_PASSWORD}@billing-platform-postgres:5432/billing?sslmode=disable"
+      DATABASE_AUTO_MIGRATE: "false"
+      SESSION_COOKIE_SECURE: "false"
+      AEAD_ENCRYPTION_KEY: "${AEAD_ENCRYPTION_KEY}"
+      ENABLE_BOOTSTRAP: "true"
+    ports:
+      - target: 8080
+        published: "8090"
+        protocol: tcp
+    networks:
+      - billing-platform
+    x-casaos:
+      envs:
+        - container: AEAD_ENCRYPTION_KEY
+          description:
+            en_US: Encrypts stored integration credentials. Generate with `openssl rand -base64 32` and keep it safe — losing it makes those values unrecoverable.
+      ports:
+        - container: "8080"
+          description:
+            en_US: billing-platform API
+          protocol: tcp
+
+  worker:
+    image: ghcr.io/raktim94/billing-platform-worker:0.1.0
+    container_name: billing-platform-worker
+    hostname: billing-platform-worker
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_DSN: "postgres://billing_app:${BILLING_APP_PASSWORD}@billing-platform-postgres:5432/billing?sslmode=disable"
+      AEAD_ENCRYPTION_KEY: "${AEAD_ENCRYPTION_KEY}"
+      EINVOICE_PROVIDER: "mock"
+    networks:
+      - billing-platform
+    x-casaos:
+      envs: []
+
+networks:
+  billing-platform:
+    driver: bridge
+
+x-casaos:
+  id: com.nodedr.billing-platform
+  architectures:
+    - amd64
+    - arm64
+  main: app
+  author: NodeDR Infotech Private Limited
+  developer: Raktim94
+  category: Finance
+  # KNOWN GAP: placeholder paths, no real assets exist yet (no frontend/
+  # brand work has happened as of Stage 10a) — replace before submission.
+  icon: https://cdn.jsdelivr.net/gh/Raktim94/billing-platform@main/deploy/casaos/icon.png
+  thumbnail: https://cdn.jsdelivr.net/gh/Raktim94/billing-platform@main/deploy/casaos/thumbnail.png
+  title:
+    en_US: billing-platform
+  tagline:
+    en_US: Self-hosted billing, inventory, accounting, and India GST — no subscription, no external connection required
+  description:
+    en_US: |
+      A production-grade, multi-company, multi-branch, multi-warehouse
+      billing, inventory, accounting, and tax-management platform.
+      India GST / e-Invoice / e-Way Bill capable, self-hosted on your own
+      hardware — no subscription, no mandatory cloud dependency, no data
+      leaving your server for core operation.
+
+      Double-entry accounting, perpetual multi-warehouse inventory, GST
+      invoicing with CGST/SGST/IGST breakdown, and a free e-Way Bill
+      workflow that never requires a paid government API. AGPL-3.0
+      licensed, same as this project's sibling, nodedr-pos.
+
+      Note: this is an early, backend-only release — a web interface
+      (apps/web) is still in development as of this version. The API is
+      fully functional; a UI is coming in a later release.
+  tips:
+    before_install:
+      en_US: |
+        Set POSTGRES_PASSWORD, BILLING_APP_PASSWORD (two different strong
+        passwords), and AEAD_ENCRYPTION_KEY (`openssl rand -base64 32`)
+        before installing.
+
+        Your data persists at `/DATA/AppData/billing-platform/postgres`,
+        following CasaOS/ZimaOS's standard backup/restore convention.
+
+        This early release has no web interface yet — use the REST API
+        directly (see the project's docs/api.md once published) or wait
+        for the upcoming apps/web release.
+  index: /
+  scheme: http
+  port_map: "8090"
+  version: "0.1.0"

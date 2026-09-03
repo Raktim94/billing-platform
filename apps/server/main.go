@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -82,6 +83,21 @@ func main() {
 }
 
 func run() error {
+	// -migrate: apply pending migrations, then exit — no HTTP server, no
+	// other setup. Exists so a self-hosted deployment can run migrations
+	// once as the schema-owning role and then run apps/server/apps/worker
+	// as a separate, non-owning runtime role (docs/architecture.md §10;
+	// see the DEPLOYMENT REQUIREMENT comment in
+	// migrations/0001_organisation_hierarchy.up.sql and
+	// database.WarnIfRuntimeRoleOwnsTenantTables below) — connecting as
+	// the table owner for ordinary request traffic silently bypasses every
+	// RLS policy, which defeats the tenant-isolation defense-in-depth this
+	// whole schema is built around. DATABASE_AUTO_MIGRATE stays a
+	// separate, independent setting for deployments that don't need this
+	// split (e.g. local development).
+	migrateOnly := flag.Bool("migrate", false, "apply pending database migrations, then exit")
+	flag.Parse()
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -89,6 +105,11 @@ func run() error {
 
 	logger := logging.NewDefault(cfg.Logging.Level)
 	slog.SetDefault(logger)
+
+	if *migrateOnly {
+		logger.Info("applying database migrations (-migrate)")
+		return database.Migrate(cfg.Database.DSN, migrations.FS)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

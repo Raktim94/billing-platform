@@ -1,0 +1,12 @@
+# Example config for the optional `reverse-proxy` Compose profile.
+# Copy to Caddyfile, replace the placeholder domain, then:
+#   docker compose --profile reverse-proxy up -d
+#
+# Most deployments don't need this — CasaOS already proxies at the host
+# level, and most VPS/cloud setups already sit behind their own
+# Caddy/Traefik/nginx/ALB. This is only for a bare box with nothing in
+# front of it (docs/architecture.md §12).
+
+your-domain.example.com {
+    reverse_proxy app:8080
+}
