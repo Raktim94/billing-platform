@@ -268,7 +268,7 @@ func (s *Service) GetProduct(ctx context.Context, principal permissions.Principa
 	var result *domain.Product
 	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
 		var err error
-		result, err = s.products.GetByID(ctx, id)
+		result, err = s.products.GetByID(ctx, principal.OrganisationID, id)
 		return err
 	})
 	return result, err
@@ -359,11 +359,11 @@ func (s *Service) GetVariantWithProduct(ctx context.Context, principal permissio
 	var product *domain.Product
 	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
 		var err error
-		variant, err = s.variants.GetByID(ctx, variantID)
+		variant, err = s.variants.GetByID(ctx, principal.OrganisationID, variantID)
 		if err != nil {
 			return err
 		}
-		product, err = s.products.GetByID(ctx, variant.ProductID)
+		product, err = s.products.GetByID(ctx, principal.OrganisationID, variant.ProductID)
 		return err
 	})
 	if err != nil {

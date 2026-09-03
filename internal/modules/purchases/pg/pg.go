@@ -52,9 +52,9 @@ const documentCols = `id, organisation_id, branch_id, warehouse_id, supplier_par
 	reference_document_id, status, COALESCE(supplier_invoice_number, ''), supplier_invoice_date, document_date,
 	currency_code, COALESCE(notes, ''), created_by, created_at, updated_at, finalized_at`
 
-func (r *DocumentRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Document, error) {
-	q := fmt.Sprintf(`SELECT %s FROM purchase_documents WHERE id = $1`, documentCols)
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+func (r *DocumentRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Document, error) {
+	q := fmt.Sprintf(`SELECT %s FROM purchase_documents WHERE organisation_id = $1 AND id = $2`, documentCols)
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	return scanDocument(row)
 }
 

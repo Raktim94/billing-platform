@@ -140,7 +140,7 @@ func (s *Service) recordMovement(ctx context.Context, orgID, actorUserID uuid.UU
 		return nil, fmt.Errorf("inventory: unit_cost is required for %s", p.MovementType)
 	}
 
-	baseUnitID, err := s.baseUnit(ctx, p.ProductVariantID)
+	baseUnitID, err := s.baseUnit(ctx, orgID, p.ProductVariantID)
 	if err != nil {
 		return nil, err
 	}
@@ -249,12 +249,12 @@ func (s *Service) recordMovement(ctx context.Context, orgID, actorUserID uuid.UU
 	return mv, nil
 }
 
-func (s *Service) baseUnit(ctx context.Context, variantID uuid.UUID) (uuid.UUID, error) {
-	v, err := s.variants.GetByID(ctx, variantID)
+func (s *Service) baseUnit(ctx context.Context, orgID, variantID uuid.UUID) (uuid.UUID, error) {
+	v, err := s.variants.GetByID(ctx, orgID, variantID)
 	if err != nil {
 		return uuid.UUID{}, fmt.Errorf("inventory: resolving product variant: %w", err)
 	}
-	p, err := s.products.GetByID(ctx, v.ProductID)
+	p, err := s.products.GetByID(ctx, orgID, v.ProductID)
 	if err != nil {
 		return uuid.UUID{}, fmt.Errorf("inventory: resolving product: %w", err)
 	}

@@ -42,7 +42,7 @@ type PriceListItem struct {
 
 type PriceListRepository interface {
 	Create(ctx context.Context, pl *PriceList) error
-	GetByID(ctx context.Context, id uuid.UUID) (*PriceList, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*PriceList, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*PriceList, error)
 }
 

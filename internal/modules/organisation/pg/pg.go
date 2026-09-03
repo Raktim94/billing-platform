@@ -90,11 +90,11 @@ func (r *LegalEntityRepo) Create(ctx context.Context, le *domain.LegalEntity) er
 	return nil
 }
 
-func (r *LegalEntityRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.LegalEntity, error) {
+func (r *LegalEntityRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.LegalEntity, error) {
 	const q = `
 		SELECT id, organisation_id, legal_name, country_code, base_currency_code, COALESCE(gstin, ''), COALESCE(gst_state_code, ''), status, created_at, updated_at
-		FROM legal_entities WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+		FROM legal_entities WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	var le domain.LegalEntity
 	var status string
 	if err := row.Scan(&le.ID, &le.OrganisationID, &le.LegalName, &le.CountryCode, &le.BaseCurrencyCode, &le.GSTIN, &le.GSTStateCode, &status, &le.CreatedAt, &le.UpdatedAt); err != nil {
@@ -147,11 +147,11 @@ func (r *BranchRepo) Create(ctx context.Context, b *domain.Branch) error {
 	return nil
 }
 
-func (r *BranchRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Branch, error) {
+func (r *BranchRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Branch, error) {
 	const q = `
 		SELECT id, organisation_id, legal_entity_id, code, name, timezone, status, created_at, updated_at
-		FROM branches WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+		FROM branches WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	var b domain.Branch
 	var status string
 	if err := row.Scan(&b.ID, &b.OrganisationID, &b.LegalEntityID, &b.Code, &b.Name, &b.Timezone, &status, &b.CreatedAt, &b.UpdatedAt); err != nil {
@@ -204,11 +204,11 @@ func (r *WarehouseRepo) Create(ctx context.Context, w *domain.Warehouse) error {
 	return nil
 }
 
-func (r *WarehouseRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Warehouse, error) {
+func (r *WarehouseRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Warehouse, error) {
 	const q = `
 		SELECT id, organisation_id, branch_id, code, name, status, created_at, updated_at
-		FROM warehouses WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+		FROM warehouses WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	var w domain.Warehouse
 	var status string
 	if err := row.Scan(&w.ID, &w.OrganisationID, &w.BranchID, &w.Code, &w.Name, &status, &w.CreatedAt, &w.UpdatedAt); err != nil {

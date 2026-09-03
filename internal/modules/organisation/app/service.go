@@ -264,7 +264,7 @@ func (s *Service) SetEWayBillMode(ctx context.Context, principal permissions.Pri
 // scope set, which fails closed against legal_entities' RLS policy — same
 // misuse class documented on those other two methods.
 func (s *Service) GetLegalEntityForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.LegalEntity, error) {
-	return s.legalEntities.GetByID(ctx, id)
+	return s.legalEntities.GetByID(ctx, orgID, id)
 }
 
 type CreateLegalEntityParams struct {

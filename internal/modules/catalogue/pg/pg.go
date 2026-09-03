@@ -50,9 +50,9 @@ func (r *UnitOfMeasureRepo) Create(ctx context.Context, u *domain.UnitOfMeasure)
 	return nil
 }
 
-func (r *UnitOfMeasureRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.UnitOfMeasure, error) {
-	const q = `SELECT id, organisation_id, code, name, created_at, updated_at FROM units_of_measure WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+func (r *UnitOfMeasureRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.UnitOfMeasure, error) {
+	const q = `SELECT id, organisation_id, code, name, created_at, updated_at FROM units_of_measure WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	var u domain.UnitOfMeasure
 	if err := row.Scan(&u.ID, &u.OrganisationID, &u.Code, &u.Name, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -153,9 +153,9 @@ func (r *CategoryRepo) Create(ctx context.Context, c *domain.Category) error {
 	return nil
 }
 
-func (r *CategoryRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Category, error) {
-	const q = `SELECT id, organisation_id, parent_id, name, created_at, updated_at FROM categories WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+func (r *CategoryRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Category, error) {
+	const q = `SELECT id, organisation_id, parent_id, name, created_at, updated_at FROM categories WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	var c domain.Category
 	if err := row.Scan(&c.ID, &c.OrganisationID, &c.ParentID, &c.Name, &c.CreatedAt, &c.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -199,9 +199,9 @@ func (r *BrandRepo) Create(ctx context.Context, b *domain.Brand) error {
 	return nil
 }
 
-func (r *BrandRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Brand, error) {
-	const q = `SELECT id, organisation_id, name, created_at, updated_at FROM brands WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+func (r *BrandRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Brand, error) {
+	const q = `SELECT id, organisation_id, name, created_at, updated_at FROM brands WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	var b domain.Brand
 	if err := row.Scan(&b.ID, &b.OrganisationID, &b.Name, &b.CreatedAt, &b.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -247,11 +247,11 @@ func (r *ProductRepo) Create(ctx context.Context, p *domain.Product) error {
 	return nil
 }
 
-func (r *ProductRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+func (r *ProductRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Product, error) {
 	const q = `
 		SELECT id, organisation_id, category_id, brand_id, base_uom_id, name, COALESCE(description, ''), COALESCE(hsn_sac_code, ''), status, created_at, updated_at
-		FROM products WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+		FROM products WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	return scanProduct(row)
 }
 
@@ -345,9 +345,9 @@ func (r *ProductVariantRepo) Create(ctx context.Context, v *domain.ProductVarian
 	return nil
 }
 
-func (r *ProductVariantRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.ProductVariant, error) {
-	const q = `SELECT id, organisation_id, product_id, sku_code, attributes, status, created_at, updated_at FROM product_variants WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+func (r *ProductVariantRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.ProductVariant, error) {
+	const q = `SELECT id, organisation_id, product_id, sku_code, attributes, status, created_at, updated_at FROM product_variants WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	return scanVariant(row)
 }
 

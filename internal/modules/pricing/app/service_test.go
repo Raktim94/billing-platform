@@ -56,7 +56,7 @@ func (f *fakePriceListItemRepo) Resolve(ctx context.Context, priceListID, varian
 type fakePriceListRepo struct{}
 
 func (fakePriceListRepo) Create(ctx context.Context, pl *domain.PriceList) error { return nil }
-func (fakePriceListRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.PriceList, error) {
+func (fakePriceListRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.PriceList, error) {
 	return nil, domain.ErrNotFound
 }
 func (fakePriceListRepo) ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*domain.PriceList, error) {

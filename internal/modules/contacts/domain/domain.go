@@ -108,7 +108,7 @@ type TaxRegistration struct {
 
 type PartyRepository interface {
 	Create(ctx context.Context, p *Party) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Party, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Party, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*Party, error)
 	// SearchByName is the fast fuzzy lookup used by billing-counter
 	// customer search and supplier lookup (brief §24/§25).
@@ -119,7 +119,7 @@ type AddressRepository interface {
 	Create(ctx context.Context, a *Address) error
 	ListByParty(ctx context.Context, partyID uuid.UUID) ([]*Address, error)
 	// GetByID is the additive extension Stage 8c needs — see pg.AddressRepo.GetByID's doc comment.
-	GetByID(ctx context.Context, id uuid.UUID) (*Address, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Address, error)
 }
 
 type TaxRegistrationRepository interface {
@@ -131,5 +131,5 @@ type TaxRegistrationRepository interface {
 	// stores customer_tax_registration_id (Stage 5b), and building an
 	// e-Invoice IRN request needs to resolve that specific registration's
 	// GSTIN, not search/list by party.
-	GetByID(ctx context.Context, id uuid.UUID) (*TaxRegistration, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*TaxRegistration, error)
 }

@@ -148,7 +148,7 @@ func (s *Service) GetDocument(ctx context.Context, principal permissions.Princip
 	var lines []*domain.DocumentLine
 	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
 		var err error
-		doc, err = s.documents.GetByID(ctx, id)
+		doc, err = s.documents.GetByID(ctx, principal.OrganisationID, id)
 		if err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func (s *Service) AddLine(ctx context.Context, principal permissions.Principal, 
 	now := s.now()
 	var line *domain.DocumentLine
 	err = s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
-		doc, err := s.documents.GetByID(ctx, p.DocumentID)
+		doc, err := s.documents.GetByID(ctx, principal.OrganisationID, p.DocumentID)
 		if err != nil {
 			return err
 		}
@@ -251,7 +251,7 @@ func (s *Service) FinalizeDocument(ctx context.Context, principal permissions.Pr
 	var doc *domain.Document
 	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
 		var err error
-		doc, err = s.documents.GetByID(ctx, documentID)
+		doc, err = s.documents.GetByID(ctx, principal.OrganisationID, documentID)
 		if err != nil {
 			return err
 		}

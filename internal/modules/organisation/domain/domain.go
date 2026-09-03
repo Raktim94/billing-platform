@@ -79,18 +79,18 @@ type OrganisationRepository interface {
 
 type LegalEntityRepository interface {
 	Create(ctx context.Context, le *LegalEntity) error
-	GetByID(ctx context.Context, id uuid.UUID) (*LegalEntity, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*LegalEntity, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*LegalEntity, error)
 }
 
 type BranchRepository interface {
 	Create(ctx context.Context, b *Branch) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Branch, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Branch, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*Branch, error)
 }
 
 type WarehouseRepository interface {
 	Create(ctx context.Context, w *Warehouse) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Warehouse, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Warehouse, error)
 	ListByBranch(ctx context.Context, branchID uuid.UUID) ([]*Warehouse, error)
 }

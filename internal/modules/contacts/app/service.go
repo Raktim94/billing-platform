@@ -113,7 +113,7 @@ func (s *Service) GetParty(ctx context.Context, principal permissions.Principal,
 	var result *domain.Party
 	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
 		var err error
-		result, err = s.parties.GetByID(ctx, id)
+		result, err = s.parties.GetByID(ctx, principal.OrganisationID, id)
 		return err
 	})
 	return result, err
@@ -263,7 +263,7 @@ func (s *Service) ListTaxRegistrations(ctx context.Context, principal permission
 // (einvoice.Service, invoked from apps/worker's outbox poller) must
 // already be inside a RunScoped block.
 func (s *Service) GetTaxRegistrationForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.TaxRegistration, error) {
-	return s.taxRegistrations.GetByID(ctx, id)
+	return s.taxRegistrations.GetByID(ctx, orgID, id)
 }
 
 // GetPartyForOtherModule and GetAddressForOtherModule are Stage 8c's
@@ -272,11 +272,11 @@ func (s *Service) GetTaxRegistrationForOtherModule(ctx context.Context, orgID, i
 // builder needs to resolve a sales document's customer party and
 // billing/shipping address IDs.
 func (s *Service) GetPartyForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.Party, error) {
-	return s.parties.GetByID(ctx, id)
+	return s.parties.GetByID(ctx, orgID, id)
 }
 
 func (s *Service) GetAddressForOtherModule(ctx context.Context, orgID, id uuid.UUID) (*domain.Address, error) {
-	return s.addresses.GetByID(ctx, id)
+	return s.addresses.GetByID(ctx, orgID, id)
 }
 
 // LookupByRegistrationNumber is the GSTIN search path (brief §24).

@@ -119,7 +119,7 @@ type Barcode struct {
 
 type UnitOfMeasureRepository interface {
 	Create(ctx context.Context, u *UnitOfMeasure) error
-	GetByID(ctx context.Context, id uuid.UUID) (*UnitOfMeasure, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*UnitOfMeasure, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*UnitOfMeasure, error)
 }
 
@@ -135,19 +135,19 @@ type UnitConversionRepository interface {
 
 type CategoryRepository interface {
 	Create(ctx context.Context, c *Category) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Category, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Category, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*Category, error)
 }
 
 type BrandRepository interface {
 	Create(ctx context.Context, b *Brand) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Brand, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Brand, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*Brand, error)
 }
 
 type ProductRepository interface {
 	Create(ctx context.Context, p *Product) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Product, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Product, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID) ([]*Product, error)
 	// SearchByName does a trigram similarity search against the
 	// idx_products_name_trgm index (migrations/0008_catalogue.up.sql).
@@ -156,7 +156,7 @@ type ProductRepository interface {
 
 type ProductVariantRepository interface {
 	Create(ctx context.Context, v *ProductVariant) error
-	GetByID(ctx context.Context, id uuid.UUID) (*ProductVariant, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*ProductVariant, error)
 	ListByProduct(ctx context.Context, productID uuid.UUID) ([]*ProductVariant, error)
 	GetBySKU(ctx context.Context, orgID uuid.UUID, skuCode string) (*ProductVariant, error)
 }

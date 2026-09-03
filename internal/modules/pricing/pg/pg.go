@@ -32,9 +32,9 @@ func (r *PriceListRepo) Create(ctx context.Context, pl *domain.PriceList) error 
 	return nil
 }
 
-func (r *PriceListRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.PriceList, error) {
-	const q = `SELECT id, organisation_id, name, currency_code, is_default, status, created_at, updated_at FROM price_lists WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+func (r *PriceListRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.PriceList, error) {
+	const q = `SELECT id, organisation_id, name, currency_code, is_default, status, created_at, updated_at FROM price_lists WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	return scanPriceList(row)
 }
 

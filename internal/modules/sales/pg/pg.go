@@ -69,9 +69,9 @@ const documentCols = `id, organisation_id, legal_entity_id, branch_id, warehouse
 	COALESCE(vehicle_number, ''), COALESCE(shipping_terms, ''), COALESCE(notes, ''), COALESCE(terms_and_conditions, ''), payment_terms_days,
 	tax_document_id, grand_total_amount, created_by, created_at, updated_at, finalized_at`
 
-func (r *DocumentRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Document, error) {
-	q := fmt.Sprintf(`SELECT %s FROM sales_documents WHERE id = $1`, documentCols)
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+func (r *DocumentRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Document, error) {
+	q := fmt.Sprintf(`SELECT %s FROM sales_documents WHERE organisation_id = $1 AND id = $2`, documentCols)
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	d, err := scanDocumentRow(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

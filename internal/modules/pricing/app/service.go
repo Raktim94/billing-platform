@@ -81,7 +81,7 @@ func (s *Service) GetPriceList(ctx context.Context, principal permissions.Princi
 	var result *domain.PriceList
 	err := s.pool.RunScoped(ctx, principal.OrganisationID, func(ctx context.Context) error {
 		var err error
-		result, err = s.priceLists.GetByID(ctx, id)
+		result, err = s.priceLists.GetByID(ctx, principal.OrganisationID, id)
 		return err
 	})
 	return result, err

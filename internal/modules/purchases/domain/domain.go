@@ -113,7 +113,7 @@ type DocumentLine struct {
 
 type DocumentRepository interface {
 	Create(ctx context.Context, d *Document) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Document, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (*Document, error)
 	ListByOrganisation(ctx context.Context, orgID uuid.UUID, documentType *DocumentType) ([]*Document, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status DocumentStatus, finalizedAt *time.Time) error
 	// NextNumber atomically allocates and returns the next sequence value

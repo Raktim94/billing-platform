@@ -37,12 +37,12 @@ func (r *PartyRepo) Create(ctx context.Context, p *domain.Party) error {
 	return nil
 }
 
-func (r *PartyRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Party, error) {
+func (r *PartyRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Party, error) {
 	const q = `
 		SELECT id, organisation_id, party_type, legal_name, COALESCE(trade_name,''), COALESCE(phone,''), COALESCE(email,''),
 		       currency_code, credit_limit_amount, payment_terms_days, COALESCE(notes,''), status, created_at, updated_at
-		FROM parties WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+		FROM parties WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	return scanParty(row)
 }
 
@@ -135,13 +135,13 @@ func (r *AddressRepo) Create(ctx context.Context, a *domain.Address) error {
 // TaxRegistrationRepository.GetByID, Stage 8): sales_documents stores
 // billing_address_id/shipping_address_id, and building a CanonicalEWayBill
 // needs to resolve those specific addresses by ID, not list-by-party.
-func (r *AddressRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Address, error) {
+func (r *AddressRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.Address, error) {
 	const q = `
 		SELECT id, organisation_id, party_id, address_type, line1, COALESCE(line2,''), COALESCE(city,''), COALESCE(state,''), COALESCE(postal_code,''), country_code, is_default, created_at, updated_at
-		FROM party_addresses WHERE id = $1`
+		FROM party_addresses WHERE organisation_id = $1 AND id = $2`
 	var a domain.Address
 	var addressType string
-	err := r.pool.Q(ctx).QueryRow(ctx, q, id).Scan(&a.ID, &a.OrganisationID, &a.PartyID, &addressType, &a.Line1, &a.Line2, &a.City, &a.State, &a.PostalCode, &a.CountryCode, &a.IsDefault, &a.CreatedAt, &a.UpdatedAt)
+	err := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id).Scan(&a.ID, &a.OrganisationID, &a.PartyID, &addressType, &a.Line1, &a.Line2, &a.City, &a.State, &a.PostalCode, &a.CountryCode, &a.IsDefault, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -216,11 +216,11 @@ func (r *TaxRegistrationRepo) ListByParty(ctx context.Context, partyID uuid.UUID
 	return out, rows.Err()
 }
 
-func (r *TaxRegistrationRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.TaxRegistration, error) {
+func (r *TaxRegistrationRepo) GetByID(ctx context.Context, orgID, id uuid.UUID) (*domain.TaxRegistration, error) {
 	const q = `
 		SELECT id, organisation_id, party_id, country_code, registration_number, COALESCE(state_code,''), is_primary, created_at
-		FROM party_tax_registrations WHERE id = $1`
-	row := r.pool.Q(ctx).QueryRow(ctx, q, id)
+		FROM party_tax_registrations WHERE organisation_id = $1 AND id = $2`
+	row := r.pool.Q(ctx).QueryRow(ctx, q, orgID, id)
 	var t domain.TaxRegistration
 	if err := row.Scan(&t.ID, &t.OrganisationID, &t.PartyID, &t.CountryCode, &t.RegistrationNumber, &t.StateCode, &t.IsPrimary, &t.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
