@@ -15,6 +15,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	accountingapp "billing-platform/internal/modules/accounting/app"
+	accountingdomain "billing-platform/internal/modules/accounting/domain"
 	catalogueapp "billing-platform/internal/modules/catalogue/app"
 	contactsapp "billing-platform/internal/modules/contacts/app"
 	inventoryapp "billing-platform/internal/modules/inventory/app"
@@ -43,8 +45,15 @@ type Service struct {
 	// pricing is optional (BillingLookup's price-resolution enrichment is
 	// best-effort — a nil pricing service just means BillingLookup never
 	// populates UnitPrice, everything else still works).
-	pricing     *pricingapp.Service
-	numbering   *numbering.Service
+	pricing   *pricingapp.Service
+	numbering *numbering.Service
+	// accounting is optional (nil in Stage 5a/5b-era callers or tests that
+	// don't need accounting posting) — a nil accounting means
+	// FinalizeDocument skips the journal-posting step entirely rather than
+	// panicking, so existing sales tests that predate Stage 6 keep working
+	// unchanged. Any caller that wants Scenario E's ledger behavior must
+	// pass a real *accountingapp.Service.
+	accounting  *accountingapp.Service
 	permissions *permissions.Checker
 	audit       audit.Recorder
 	now         func() time.Time
@@ -61,12 +70,13 @@ func NewService(
 	organisationSvc *orgapp.Service,
 	pricingSvc *pricingapp.Service,
 	numberingSvc *numbering.Service,
+	accountingSvc *accountingapp.Service,
 	checker *permissions.Checker,
 	recorder audit.Recorder,
 ) *Service {
 	return &Service{pool: pool, documents: documents, lines: lines, inventory: inventorySvc, taxation: taxationSvc,
 		catalogue: catalogueSvc, contacts: contactsSvc, organisation: organisationSvc, pricing: pricingSvc, numbering: numberingSvc,
-		permissions: checker, audit: recorder, now: time.Now}
+		accounting: accountingSvc, permissions: checker, audit: recorder, now: time.Now}
 }
 
 // Permission codes are the ones migrations/0002_rbac_catalog.up.sql
@@ -415,6 +425,33 @@ func (s *Service) FinalizeDocument(ctx context.Context, principal permissions.Pr
 				if _, err := s.inventory.RecordMovementForOtherModule(ctx, principal.OrganisationID, principal.UserID, params); err != nil {
 					return fmt.Errorf("posting stock movement for line %d: %w", line.LineNumber, err)
 				}
+			}
+		}
+
+		if s.accounting != nil && domain.RevenueAffecting(doc.DocumentType) {
+			customerID := doc.CustomerPartyID
+			debitCode, creditSalesCode, creditTaxCode := accountingdomain.CodeAccountsReceivable, accountingdomain.CodeSales, accountingdomain.CodeGSTOutputTaxPayable
+			lines := []accountingapp.JournalLineRequest{
+				{AccountCode: debitCode, PartyID: &customerID, Debit: taxDoc.GrandTotal.Decimal(), Description: "Sale " + doc.DocumentNumber},
+				{AccountCode: creditSalesCode, Credit: taxDoc.TotalTaxableAmount.Decimal(), Description: "Sale " + doc.DocumentNumber},
+			}
+			if taxDoc.TotalTaxAmount.Decimal().IsPositive() {
+				lines = append(lines, accountingapp.JournalLineRequest{AccountCode: creditTaxCode, Credit: taxDoc.TotalTaxAmount.Decimal(), Description: "Sale " + doc.DocumentNumber})
+			}
+			if domain.ReducesReceivable(doc.DocumentType) {
+				// A credit note / sales return reduces what the customer
+				// owes and reduces recognized revenue — post with reversed
+				// polarity (Cr AR / Dr Sales + Dr Tax) instead of building
+				// a second code path: swap each line's Debit/Credit.
+				for i := range lines {
+					lines[i].Debit, lines[i].Credit = lines[i].Credit, lines[i].Debit
+				}
+			}
+			if _, err := s.accounting.PostTx(ctx, principal, accountingapp.JournalRequest{
+				OrganisationID: principal.OrganisationID, SourceType: "sales_document", SourceID: &doc.ID,
+				JournalDate: doc.IssueDate, Description: "Sale " + doc.DocumentNumber, CreatedBy: principal.UserID, Lines: lines,
+			}); err != nil {
+				return fmt.Errorf("posting sale journal: %w", err)
 			}
 		}
 

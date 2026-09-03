@@ -15,6 +15,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	accountingapp "billing-platform/internal/modules/accounting/app"
+	accountingdomain "billing-platform/internal/modules/accounting/domain"
 	inventoryapp "billing-platform/internal/modules/inventory/app"
 	inventorydomain "billing-platform/internal/modules/inventory/domain"
 	"billing-platform/internal/modules/purchases/domain"
@@ -25,10 +27,13 @@ import (
 )
 
 type Service struct {
-	pool        database.Runner
-	documents   domain.DocumentRepository
-	lines       domain.DocumentLineRepository
-	inventory   *inventoryapp.Service
+	pool      database.Runner
+	documents domain.DocumentRepository
+	lines     domain.DocumentLineRepository
+	inventory *inventoryapp.Service
+	// accounting is optional — see sales/app.Service's identical field
+	// comment for why (pre-Stage-6 callers/tests keep working with nil).
+	accounting  *accountingapp.Service
 	permissions *permissions.Checker
 	audit       audit.Recorder
 	now         func() time.Time
@@ -39,11 +44,12 @@ func NewService(
 	documents domain.DocumentRepository,
 	lines domain.DocumentLineRepository,
 	inventory *inventoryapp.Service,
+	accountingSvc *accountingapp.Service,
 	checker *permissions.Checker,
 	recorder audit.Recorder,
 ) *Service {
 	return &Service{pool: pool, documents: documents, lines: lines, inventory: inventory,
-		permissions: checker, audit: recorder, now: time.Now}
+		accounting: accountingSvc, permissions: checker, audit: recorder, now: time.Now}
 }
 
 // Permission codes are the ones migrations/0002_rbac_catalog.up.sql
@@ -282,6 +288,31 @@ func (s *Service) FinalizeDocument(ctx context.Context, principal permissions.Pr
 				}
 				if _, err := s.inventory.RecordMovementForOtherModule(ctx, principal.OrganisationID, principal.UserID, params); err != nil {
 					return fmt.Errorf("posting stock movement for line %d: %w", line.LineNumber, err)
+				}
+			}
+		}
+
+		if s.accounting != nil && domain.AccountingAffecting(doc.DocumentType) {
+			total := decimal.Zero
+			for _, l := range lines {
+				total = total.Add(l.LineTotal.Decimal())
+			}
+			if total.IsPositive() {
+				supplierID := doc.SupplierPartyID
+				docLines := []accountingapp.JournalLineRequest{
+					{AccountCode: accountingdomain.CodePurchases, Debit: total, Description: "Purchase " + doc.DocumentNumber},
+					{AccountCode: accountingdomain.CodeAccountsPayable, PartyID: &supplierID, Credit: total, Description: "Purchase " + doc.DocumentNumber},
+				}
+				if domain.ReducesPayable(doc.DocumentType) {
+					for i := range docLines {
+						docLines[i].Debit, docLines[i].Credit = docLines[i].Credit, docLines[i].Debit
+					}
+				}
+				if _, err := s.accounting.PostTx(ctx, principal, accountingapp.JournalRequest{
+					OrganisationID: principal.OrganisationID, SourceType: "purchase_document", SourceID: &doc.ID,
+					JournalDate: doc.DocumentDate, Description: "Purchase " + doc.DocumentNumber, CreatedBy: principal.UserID, Lines: docLines,
+				}); err != nil {
+					return fmt.Errorf("posting purchase journal: %w", err)
 				}
 			}
 		}

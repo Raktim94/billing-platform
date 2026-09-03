@@ -69,6 +69,32 @@ func MovementTypeFor(t DocumentType) string {
 	return "SALE"
 }
 
+// RevenueAffecting reports whether finalizing a document of this type
+// posts an accounting journal (Stage 6, docs/adr/0003-accounting-integration-point.md).
+// TAX_INVOICE/POS_INVOICE/CREDIT_NOTE/DEBIT_NOTE/SALES_RETURN/RECURRING_INVOICE
+// are real billing events; QUOTATION/PROFORMA_INVOICE/SALES_ORDER/
+// DELIVERY_CHALLAN are commitments or goods-movement documents with no
+// revenue recognized yet — mirrors StockAffecting's classification
+// reasoning but is a distinct set (a delivery challan moves stock without
+// billing; a credit note bills without moving stock).
+func RevenueAffecting(t DocumentType) bool {
+	switch t {
+	case DocTaxInvoice, DocPOSInvoice, DocCreditNote, DocDebitNote, DocSalesReturn, DocRecurringInvoice:
+		return true
+	default:
+		return false
+	}
+}
+
+// ReducesReceivable reports whether finalizing a document of this type
+// should post with reversed polarity (Cr Accounts Receivable / Dr Sales +
+// Dr Tax Payable) instead of the normal sale direction — a credit note or
+// a sales return both reduce what the customer owes, unlike a tax invoice,
+// POS sale, debit note, or recurring invoice, which all increase it.
+func ReducesReceivable(t DocumentType) bool {
+	return t == DocCreditNote || t == DocSalesReturn
+}
+
 type DocumentStatus string
 
 const (

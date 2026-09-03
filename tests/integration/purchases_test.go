@@ -20,6 +20,8 @@ import (
 	"billing-platform/internal/platform/permissions"
 )
 
+// accountingSvc is nil here deliberately — see sales_test.go's identical
+// note on newTestSalesServices; Stage 6's own tests wire a real one.
 func newTestPurchasesService(t *testing.T, inventorySvc *inventoryapp.Service) *purchasesapp.Service {
 	t.Helper()
 	return purchasesapp.NewService(
@@ -27,6 +29,7 @@ func newTestPurchasesService(t *testing.T, inventorySvc *inventoryapp.Service) *
 		purchasespg.NewDocumentRepo(sharedPool),
 		purchasespg.NewDocumentLineRepo(sharedPool),
 		inventorySvc,
+		nil,
 		permissions.NewChecker(permissions.NewPGStore(sharedPool), sharedPool),
 		audit.NewPGRecorder(sharedPool),
 	)

@@ -85,11 +85,17 @@ func newTestSalesServices(t *testing.T) (*salesapp.Service, *inventoryapp.Servic
 		checker, recorder,
 	)
 
+	// accountingSvc is nil here deliberately — this pre-Stage-6 helper is
+	// shared by every existing sales test, none of which set up a chart of
+	// accounts; FinalizeDocument treats a nil accounting as "skip posting"
+	// (see sales/app.Service's field comment). Stage 6's own tests
+	// (accounting_test.go) construct their own sales/purchases services
+	// WITH a real accountingSvc wired in.
 	salesSvc := salesapp.NewService(
 		sharedPool,
 		salespg.NewDocumentRepo(sharedPool),
 		salespg.NewDocumentLineRepo(sharedPool),
-		inventorySvc, taxationSvc, catalogueSvc, contactsSvc, orgSvc, pricingSvc, numberingSvc,
+		inventorySvc, taxationSvc, catalogueSvc, contactsSvc, orgSvc, pricingSvc, numberingSvc, nil,
 		checker, recorder,
 	)
 	return salesSvc, inventorySvc, catalogueSvc, gstindiaSvc

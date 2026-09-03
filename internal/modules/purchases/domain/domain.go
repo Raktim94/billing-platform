@@ -44,6 +44,26 @@ func StockAffecting(t DocumentType) bool {
 	return t == DocGoodsReceipt || t == DocPurchaseReturn
 }
 
+// AccountingAffecting reports whether finalizing a document of this type
+// posts an accounting journal (Stage 6, docs/adr/0003-accounting-integration-point.md).
+// PURCHASE_INVOICE/PURCHASE_RETURN/DEBIT_NOTE are billed amounts — a
+// PURCHASE_ORDER is a commitment and a GOODS_RECEIPT records physical
+// receipt at cost (already captured in stock_balances since Stage 4), not
+// a confirmed payable; booking the liability twice (once at GRN, once at
+// invoice) would double-count if the two amounts ever differ, so the
+// payable books only when the actual bill is finalized.
+func AccountingAffecting(t DocumentType) bool {
+	return t == DocPurchaseInvoice || t == DocPurchaseReturn || t == DocDebitNote
+}
+
+// ReducesPayable reports whether finalizing a document of this type
+// should post with reversed polarity (Dr Accounts Payable / Cr Purchases)
+// instead of the normal purchase direction — a purchase return or a
+// supplier debit note both reduce what's owed to the supplier.
+func ReducesPayable(t DocumentType) bool {
+	return t == DocPurchaseReturn || t == DocDebitNote
+}
+
 type DocumentStatus string
 
 const (

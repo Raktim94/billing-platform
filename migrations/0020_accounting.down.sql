@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS reconciliations;
+DROP TABLE IF EXISTS payments;
+DROP TABLE IF EXISTS receipts;
+DROP TABLE IF EXISTS bank_accounts;
+DROP TABLE IF EXISTS fiscal_periods;
+DROP TRIGGER IF EXISTS journal_lines_immutable ON journal_lines;
+DROP FUNCTION IF EXISTS accounting_journal_lines_no_mutation();
+DROP TRIGGER IF EXISTS journal_lines_balanced ON journal_lines;
+DROP FUNCTION IF EXISTS accounting_check_journal_balanced();
+DROP TABLE IF EXISTS journal_lines;
+DROP TABLE IF EXISTS journals;
+DROP TABLE IF EXISTS accounts;

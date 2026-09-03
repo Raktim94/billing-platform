@@ -62,14 +62,15 @@ part of finishing a stage, not after the fact.
 - [x] Sales screen API groundwork: `BillingLookup` (product search + stock + price in one call, brief §24/§25)
 - [x] Unit tests (100/100) + integration tests (53/53, incl. finalize atomicity, numbering concurrency, tax-snapshot immutability, RLS, PDF rendering) — independently re-verified, one real bug caught by the print test and fixed (RLS-scope-before-read ordering, same class as earlier stages)
 
-## Stage 6 — Accounting
-- [ ] `internal/modules/accounting`: chart_of_accounts, journals, journal_lines, fiscal_periods, payments, receipts, bank/cash accounts, reconciliation
-- [ ] Double-entry invariant enforced at 3 layers (app check, deferred DB trigger, no-UPDATE grant on posted rows) per `docs/architecture.md` §7
-- [ ] Auto-posting from finalized sales/purchase documents and payments
-- [ ] Customer/supplier ledger: chronological, running balance, ageing buckets, credit limit/overdue alerts
-- [ ] Fiscal year config + period locking (brief §52)
-- [ ] Property tests: Σdebit == Σcredit for any valid journal (brief §65)
-- [ ] Scenario E (partial payment/outstanding balance) passing end-to-end
+## Stage 6 — Accounting ✅ (2026-09-03, one scope note)
+- [x] `internal/modules/accounting`: chart_of_accounts (idempotent default-seed via `EnsureDefaultChartOfAccounts`), journals, journal_lines, fiscal_periods, receipts, payments, bank_accounts, reconciliations
+- [x] Double-entry invariant enforced at 3 layers per `docs/architecture.md` §7 — app-layer `validateBalanced` (unit + property tested), a Postgres DEFERRED CONSTRAINT TRIGGER re-verifying Σdebit=Σcredit at COMMIT (proved via raw SQL bypassing the Go app layer entirely), and an unconditional BEFORE UPDATE/DELETE trigger making journal_lines immutable from the instant they're written (also proved via raw SQL) — a trigger rather than GRANT/REVOKE specifically because a table owner bypasses grants the same way it bypasses RLS (Stage 2's lesson), so a trigger is the one mechanism guaranteed to hold regardless of which role connects
+- [x] Auto-posting from finalized sales/purchase documents (`docs/adr/0003-accounting-integration-point.md`) — sales posts Dr AR/Cr Sales+Tax Payable (or reversed for credit notes/returns) using the real tax snapshot; purchases posts Dr Purchases/Cr AP for invoice/return/debit-note. **Scope note, not silently skipped:** purchases posts a single line-total amount, not split into a separate GST Input Tax Credit line — purchases has never been wired through the tax engine (unlike sales), and doing that properly is flagged as a bounded, well-precedented follow-up in the ADR rather than rushed here
+- [x] Customer/supplier ledger (`GetPartyLedger`) — derived fresh from journal_lines every call, never a mutable stored balance column (explicitly avoiding nodedr-pos's real Float-`increment` balance-drift incident); ageing (`GetAgeing`) via oldest-first FIFO credit-to-debit matching
+- [x] Fiscal year config + period locking (brief §52) — `accounting.override_locked_period` is a separate permission from `accounting.post`; lock lifecycle tested, override-path tested (the bootstrap Owner holds every permission so the "non-override user is blocked" direction isn't separately covered — flagged, not silently assumed)
+- [x] Property test: Σdebit == Σcredit for any valid journal (200 randomized generate-then-check iterations, plus a perturbation check that a 1-paisa-unbalanced journal is always rejected)
+- [x] Scenario E passing end-to-end: ₹10,000 tax-inclusive credit sale → ₹4,000 receipt → ledger shows exactly ₹6,000 outstanding
+- [x] Unit tests (105/105) + integration tests (62/62, incl. RLS on journals/journal_lines via raw SQL with no org filter in the query — the RLS-itself test, not an app-layer WHERE-clause test) — independently re-verified, one real bug caught by the test suite and fixed (migration declared `NOT NULL DEFAULT ''` on `description`/`reference_number` columns, inconsistent with the nullable+`nullIfEmpty`/`COALESCE` convention every other module in this codebase uses — fixed in the migration before it was ever pushed)
 
 ## Stage 7 — Reports / Dashboard
 - [ ] Sales, inventory, purchase, accounting, tax report datasets per brief §22 (full list)

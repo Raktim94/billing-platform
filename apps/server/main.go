@@ -19,6 +19,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	accountingapp "billing-platform/internal/modules/accounting/app"
+	accountinghttp "billing-platform/internal/modules/accounting/httpapi"
+	accountingpg "billing-platform/internal/modules/accounting/pg"
 	catalogueapp "billing-platform/internal/modules/catalogue/app"
 	cataloguehttp "billing-platform/internal/modules/catalogue/httpapi"
 	cataloguepg "billing-platform/internal/modules/catalogue/pg"
@@ -189,11 +192,26 @@ func run() error {
 		auditRecorder,
 	)
 
+	accountingSvc := accountingapp.NewService(
+		pool,
+		accountingpg.NewAccountRepo(pool),
+		accountingpg.NewJournalRepo(pool),
+		accountingpg.NewJournalLineRepo(pool),
+		accountingpg.NewFiscalPeriodRepo(pool),
+		accountingpg.NewBankAccountRepo(pool),
+		accountingpg.NewReceiptRepo(pool),
+		accountingpg.NewPaymentRepo(pool),
+		accountingpg.NewReconciliationRepo(pool),
+		permissionsChecker,
+		auditRecorder,
+	)
+
 	purchasesSvc := purchasesapp.NewService(
 		pool,
 		purchasespg.NewDocumentRepo(pool),
 		purchasespg.NewDocumentLineRepo(pool),
 		inventorySvc,
+		accountingSvc,
 		permissionsChecker,
 		auditRecorder,
 	)
@@ -226,6 +244,7 @@ func run() error {
 		orgSvc,
 		pricingSvc,
 		numberingSvc,
+		accountingSvc,
 		permissionsChecker,
 		auditRecorder,
 	)
@@ -271,6 +290,7 @@ func run() error {
 			purchaseshttp.NewHandlers(purchasesSvc).Mount(r)
 			gstindiahttp.NewHandlers(gstindiaSvc).Mount(r)
 			saleshttp.NewHandlers(salesSvc).Mount(r)
+			accountinghttp.NewHandlers(accountingSvc).Mount(r)
 		})
 	})
 
