@@ -240,7 +240,12 @@
   z-index: 20;
 }
 
-.userDropdown button {
+.userDropdown {
+  list-style: none;
+}
+
+.userDropdown button,
+.userDropdown a {
   display: block;
   width: 100%;
   text-align: left;
@@ -250,8 +255,11 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   color: var(--color-text);
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
-.userDropdown button:hover {
+.userDropdown button:hover,
+.userDropdown a:hover {
   background: var(--color-surface-alt);
 }

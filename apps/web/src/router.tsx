@@ -1,21 +1,24 @@
+import { Suspense } from "react";
 import { createRootRoute, createRoute, createRouter, Navigate, Outlet, redirect, useSearch } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
-import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { BootstrapPage } from "./pages/BootstrapPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
-import { BillingPage } from "./pages/sales/BillingPage";
-import { SalesDetailPage } from "./pages/sales/SalesDetailPage";
-import { SalesListPage } from "./pages/sales/SalesListPage";
-import { PurchasesPage } from "./pages/purchases/PurchasesPage";
-import { InventoryPage } from "./pages/inventory/InventoryPage";
-import { ContactsPage } from "./pages/contacts/ContactsPage";
-import { CataloguePage } from "./pages/catalogue/CataloguePage";
-import { AccountingPage } from "./pages/accounting/AccountingPage";
-import { GstPage } from "./pages/gst/GstPage";
-import { ReportsPage } from "./pages/reports/ReportsPage";
-import { SettingsPage } from "./pages/settings/SettingsPage";
 import { readSessionHint } from "./auth/session";
+import {
+  AccountingPage,
+  BillingPage,
+  CataloguePage,
+  ContactsPage,
+  DashboardPage,
+  GstPage,
+  InventoryPage,
+  PurchasesPage,
+  ReportsPage,
+  SalesDetailPage,
+  SalesListPage,
+  SettingsPage,
+} from "./lazyPages";
 
 /**
  * Code-based routing (not TanStack Router's file-based/codegen mode) —
@@ -39,6 +42,13 @@ import { readSessionHint } from "./auth/session";
  * works and re-nesting isn't worth the risk under this pass's time
  * budget — worth revisiting in a later pass if the per-route repetition
  * becomes annoying.
+ *
+ * Every feature page below is React.lazy-loaded (Stage 10b-2) — the
+ * single-chunk production build had grown past 1.5MB (mostly ECharts,
+ * used only by the dashboard) once Sales/Purchases/Inventory/etc. all
+ * existed; splitting means visiting one screen no longer pays for every
+ * other screen's code, and dashboard's chart library only loads for
+ * users who actually see the dashboard.
  */
 
 const rootRoute = createRootRoute({
@@ -55,10 +65,12 @@ function requireAuth() {
   }
 }
 
-function withShell(Page: () => React.ReactElement) {
+function withShell(Page: React.ComponentType) {
   return () => (
     <AppShell>
-      <Page />
+      <Suspense fallback={null}>
+        <Page />
+      </Suspense>
     </AppShell>
   );
 }
@@ -91,12 +103,16 @@ function placeholderRoute<TPath extends string>(path: TPath, title: string) {
   });
 }
 
-const salesListRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/sales",
-  beforeLoad: requireAuth,
-  component: withShell(SalesListPage),
-});
+function realRoute<TPath extends string>(path: TPath, component: React.ComponentType) {
+  return createRoute({
+    getParentRoute: () => rootRoute,
+    path,
+    beforeLoad: requireAuth,
+    component: withShell(component),
+  });
+}
+
+const salesListRoute = realRoute("/sales", SalesListPage);
 
 const salesNewRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -120,15 +136,6 @@ const salesDetailRoute = createRoute({
     return <SalesDetailPage id={id} />;
   }),
 });
-
-function realRoute<TPath extends string>(path: TPath, component: () => React.ReactElement) {
-  return createRoute({
-    getParentRoute: () => rootRoute,
-    path,
-    beforeLoad: requireAuth,
-    component: withShell(component),
-  });
-}
 
 const purchasesRoute = realRoute("/purchases", PurchasesPage);
 const inventoryRoute = realRoute("/inventory", InventoryPage);

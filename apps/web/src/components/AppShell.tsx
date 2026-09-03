@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import styles from "./AppShell.module.css";
 import { useAuth } from "../auth/AuthProvider";
 import { useTheme } from "../theme/ThemeProvider";
+import { api } from "../lib/api-client";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
@@ -18,23 +19,62 @@ const NAV_ITEMS = [
   { to: "/settings", label: "Settings" },
 ] as const;
 
+interface SearchResult {
+  kind: "customer" | "product";
+  id: string;
+  label: string;
+  to: string;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
   const { logout } = useAuth();
   const { theme, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const createRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !createOpen && !searchOpen) return;
     const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (createRef.current && !createRef.current.contains(e.target as Node)) setCreateOpen(false);
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
-  }, [menuOpen]);
+  }, [menuOpen, createOpen, searchOpen]);
+
+  // Global search — customers and products in one combined dropdown
+  // (brief §24's "search everything" bar). Sales-document-number search
+  // isn't wired here yet — the Sales list's own search covers that case
+  // today; combining all three is left for a follow-up pass.
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      return;
+    }
+    const handle = setTimeout(() => {
+      Promise.all([
+        api.get<{ parties: { ID: string; LegalName: string }[] }>(`/contacts/parties?q=${encodeURIComponent(q)}`),
+        api.get<{ products: { ID: string; Name: string }[] }>(`/catalogue/products?q=${encodeURIComponent(q)}`),
+      ])
+        .then(([parties, products]) => {
+          setSearchResults([
+            ...parties.parties.slice(0, 5).map((p) => ({ kind: "customer" as const, id: p.ID, label: p.LegalName, to: "/contacts" })),
+            ...products.products.slice(0, 5).map((p) => ({ kind: "product" as const, id: p.ID, label: p.Name, to: "/catalogue" })),
+          ]);
+        })
+        .catch(() => setSearchResults([]));
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
 
   return (
     <div className={styles.shell}>
@@ -58,18 +98,60 @@ export function AppShell({ children }: { children: ReactNode }) {
       </nav>
 
       <header className={styles.topbar}>
-        <div className={styles.search} role="search">
+        <div className={styles.search} role="search" ref={searchRef} style={{ position: "relative" }}>
           <span aria-hidden="true">⌕</span>
           <input
             type="search"
-            placeholder="Search invoices, customers, products…"
+            placeholder="Search customers, products…"
             aria-label="Global search"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setSearchOpen(true);
+            }}
+            onFocus={() => setSearchOpen(true)}
           />
+          {searchOpen && searchQuery.trim().length >= 2 && searchResults.length > 0 ? (
+            <ul className={styles.userDropdown} role="listbox" style={{ left: 0, right: "auto", top: "calc(100% + 4px)", minWidth: 280 }}>
+              {searchResults.map((r) => (
+                <li key={`${r.kind}-${r.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchOpen(false);
+                      setSearchQuery("");
+                      void navigate({ to: r.to });
+                    }}
+                  >
+                    {r.label} <span style={{ color: "var(--color-text-faint)" }}>· {r.kind}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
         <div className={styles.topbarSpacer} />
-        <button type="button" className={styles.quickCreate}>
-          + Quick create
-        </button>
+        <div className={styles.userMenu} ref={createRef}>
+          <button type="button" className={styles.quickCreate} onClick={() => setCreateOpen((v) => !v)} aria-expanded={createOpen} aria-haspopup="menu">
+            + Quick create
+          </button>
+          {createOpen ? (
+            <div className={styles.userDropdown} role="menu">
+              <Link to="/sales/new" role="menuitem" onClick={() => setCreateOpen(false)}>
+                New sale
+              </Link>
+              <Link to="/purchases" role="menuitem" onClick={() => setCreateOpen(false)}>
+                New purchase
+              </Link>
+              <Link to="/contacts" role="menuitem" onClick={() => setCreateOpen(false)}>
+                New contact
+              </Link>
+              <Link to="/catalogue" role="menuitem" onClick={() => setCreateOpen(false)}>
+                New product
+              </Link>
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           className={styles.iconButton}
