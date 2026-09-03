@@ -1,9 +1,12 @@
-import { createRootRoute, createRoute, createRouter, Navigate, Outlet, redirect } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, Navigate, Outlet, redirect, useSearch } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { BootstrapPage } from "./pages/BootstrapPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { BillingPage } from "./pages/sales/BillingPage";
+import { SalesDetailPage } from "./pages/sales/SalesDetailPage";
+import { SalesListPage } from "./pages/sales/SalesListPage";
 import { readSessionHint } from "./auth/session";
 
 /**
@@ -80,7 +83,36 @@ function placeholderRoute<TPath extends string>(path: TPath, title: string) {
   });
 }
 
-const salesRoute = placeholderRoute("/sales", "Sales");
+const salesListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sales",
+  beforeLoad: requireAuth,
+  component: withShell(SalesListPage),
+});
+
+const salesNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sales/new",
+  beforeLoad: requireAuth,
+  validateSearch: (search: Record<string, unknown>): { resume?: string } => ({
+    resume: typeof search.resume === "string" ? search.resume : undefined,
+  }),
+  component: withShell(() => {
+    const { resume } = useSearch({ from: salesNewRoute.id });
+    return <BillingPage resumeDocumentId={resume} />;
+  }),
+});
+
+const salesDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sales/$id",
+  beforeLoad: requireAuth,
+  component: withShell(() => {
+    const { id } = salesDetailRoute.useParams();
+    return <SalesDetailPage id={id} />;
+  }),
+});
+
 const purchasesRoute = placeholderRoute("/purchases", "Purchases");
 const inventoryRoute = placeholderRoute("/inventory", "Inventory");
 const contactsRoute = placeholderRoute("/contacts", "Contacts");
@@ -100,7 +132,9 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   bootstrapRoute,
   dashboardRoute,
-  salesRoute,
+  salesListRoute,
+  salesNewRoute,
+  salesDetailRoute,
   purchasesRoute,
   inventoryRoute,
   contactsRoute,

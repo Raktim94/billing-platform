@@ -1,0 +1,63 @@
+import type { Money } from "../../lib/money";
+
+/** Mirrors internal/modules/sales/domain.Document/DocumentLine — no json
+ * tags on those structs, so Go's exported field names serialize verbatim. */
+export type DocumentType =
+  | "QUOTATION"
+  | "PROFORMA_INVOICE"
+  | "SALES_ORDER"
+  | "DELIVERY_CHALLAN"
+  | "TAX_INVOICE"
+  | "POS_INVOICE"
+  | "CREDIT_NOTE"
+  | "DEBIT_NOTE"
+  | "SALES_RETURN"
+  | "RECURRING_INVOICE";
+
+export type DocumentStatus = "DRAFT" | "FINALIZED" | "CANCELLED";
+
+export interface SalesDocument {
+  ID: string;
+  OrganisationID: string;
+  LegalEntityID: string;
+  BranchID: string;
+  WarehouseID: string;
+  CustomerPartyID: string;
+  DocumentType: DocumentType;
+  DocumentNumber: string;
+  Status: DocumentStatus;
+  IssueDate: string;
+  PlaceOfSupplyStateCode: string;
+  CurrencyCode: string;
+  GrandTotalAmount: Money | null;
+  CreatedAt: string;
+  FinalizedAt: string | null;
+}
+
+export interface SalesDocumentLine {
+  ID: string;
+  SalesDocumentID: string;
+  LineNumber: number;
+  ProductVariantID: string;
+  UnitID: string;
+  Quantity: string;
+  UnitPrice: Money;
+  LineDiscountAmount: Money;
+  HSNSACCode: string;
+  LineTotal: Money;
+  BatchCode: string;
+  SerialCode: string;
+}
+
+export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
+  QUOTATION: "Quotation",
+  PROFORMA_INVOICE: "Proforma invoice",
+  SALES_ORDER: "Sales order",
+  DELIVERY_CHALLAN: "Delivery challan",
+  TAX_INVOICE: "Tax invoice",
+  POS_INVOICE: "POS invoice",
+  CREDIT_NOTE: "Credit note",
+  DEBIT_NOTE: "Debit note",
+  SALES_RETURN: "Sales return",
+  RECURRING_INVOICE: "Recurring invoice",
+};
