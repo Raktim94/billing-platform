@@ -18,6 +18,14 @@
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+@media (hover: hover) {
+  .card:hover {
+    box-shadow: var(--shadow-popover);
+    transform: translateY(-1px);
+  }
 }
 
 .card[data-polarity="positive"] {

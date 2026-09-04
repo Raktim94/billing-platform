@@ -103,21 +103,42 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div className={styles.panel}>
-        <h2>Sales trend</h2>
-        {trend.isError ? (
-          <div className={styles.errorState} role="alert">
-            Couldn't load the sales trend.
-          </div>
-        ) : trend.isPending ? (
-          <div className={styles.skeleton} style={{ height: 260 }} aria-hidden="true" />
-        ) : (trend.data.rows ?? []).length === 0 ? (
-          <p className={styles.emptyState}>
-            No sales recorded yet. Once you create and finalize an invoice, its trend will show up here.
-          </p>
-        ) : (
-          <SalesTrendChart rows={trend.data.rows ?? []} dark={theme === "dark"} />
-        )}
+      <div className={styles.panelRow}>
+        <div className={styles.panel}>
+          <h2>Sales trend</h2>
+          {trend.isError ? (
+            <div className={styles.errorState} role="alert">
+              Couldn't load the sales trend.
+            </div>
+          ) : trend.isPending ? (
+            <div className={styles.skeleton} style={{ height: 260 }} aria-hidden="true" />
+          ) : (trend.data.rows ?? []).length === 0 ? (
+            <p className={styles.emptyState}>
+              No sales recorded yet. Once you create and finalize an invoice, its trend will show up here.
+            </p>
+          ) : (
+            <SalesTrendChart rows={trend.data.rows ?? []} dark={theme === "dark"} />
+          )}
+        </div>
+
+        <div className={styles.panel}>
+          <h2>Receivable vs payable</h2>
+          {dashboard.isError ? (
+            <div className={styles.errorState} role="alert">
+              Couldn't load outstanding balances.
+            </div>
+          ) : dashboard.isPending ? (
+            <div className={styles.skeleton} style={{ height: 260 }} aria-hidden="true" />
+          ) : isZeroMoney(dashboard.data.OutstandingReceivable) && isZeroMoney(dashboard.data.OutstandingPayable) ? (
+            <p className={styles.emptyState}>Nothing outstanding on either side yet.</p>
+          ) : (
+            <ReceivablePayableChart
+              receivable={dashboard.data.OutstandingReceivable}
+              payable={dashboard.data.OutstandingPayable}
+              dark={theme === "dark"}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -179,6 +200,85 @@ function SalesTrendChart({ rows, dark }: { rows: string[][]; dark: boolean }) {
         symbolSize: 6,
         lineStyle: { width: 2 },
         areaStyle: { opacity: 0.08, color: accent },
+      },
+    ],
+  };
+
+  return (
+    <>
+      {accessibleTable}
+      <div aria-hidden="true">
+        <ReactECharts option={option} style={{ height: 260 }} notMerge />
+      </div>
+    </>
+  );
+}
+
+// Two magnitudes, compared — a horizontal bar, not a donut (two-slice pies
+// force the reader to compare angles; bars compare on one shared, labeled
+// axis instead). Colors are categorical (which side of the ledger this is),
+// not polarity: outstanding-anything is a "watch this" state either way,
+// same read as the two StatCards above using the same "warning" tone.
+function ReceivablePayableChart({ receivable, payable, dark }: { receivable: Money; payable: Money; dark: boolean }) {
+  const receivableColor = dark ? "#29c191" : "#0f6e5c";
+  const payableColor = dark ? "#e0b355" : "#906409";
+  const textColor = dark ? "#9db0a4" : "#5b6b62";
+  const gridColor = dark ? "#2b3632" : "#dbdfd8";
+
+  const receivableValue = moneyToApproxNumber(receivable);
+  const payableValue = moneyToApproxNumber(payable);
+
+  const accessibleTable = (
+    <table className="srOnly">
+      <caption>Outstanding receivable vs. payable</caption>
+      <thead>
+        <tr>
+          <th scope="col">Type</th>
+          <th scope="col">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Receivable</td>
+          <td>{formatMoney(receivable)}</td>
+        </tr>
+        <tr>
+          <td>Payable</td>
+          <td>{formatMoney(payable)}</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+
+  const option = {
+    grid: { left: 84, right: 48, top: 16, bottom: 16 },
+    xAxis: {
+      type: "value" as const,
+      splitLine: { lineStyle: { color: gridColor } },
+      axisLabel: { color: textColor, fontFamily: "IBM Plex Mono" },
+    },
+    yAxis: {
+      type: "category" as const,
+      data: ["Payable", "Receivable"],
+      axisLine: { lineStyle: { color: gridColor } },
+      axisLabel: { color: textColor, fontFamily: "IBM Plex Sans" },
+    },
+    tooltip: { trigger: "item" as const },
+    series: [
+      {
+        type: "bar" as const,
+        data: [
+          { value: payableValue, itemStyle: { color: payableColor, borderRadius: [0, 4, 4, 0] } },
+          { value: receivableValue, itemStyle: { color: receivableColor, borderRadius: [0, 4, 4, 0] } },
+        ],
+        barWidth: 22,
+        label: {
+          show: true,
+          position: "right" as const,
+          color: textColor,
+          fontFamily: "IBM Plex Mono",
+          formatter: (p: { value: number }) => formatMoney({ amount: String(p.value), currency: "INR" }),
+        },
       },
     ],
   };
