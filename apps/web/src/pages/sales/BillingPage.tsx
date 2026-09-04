@@ -90,11 +90,15 @@ export function BillingPage({ resumeDocumentId }: { resumeDocumentId?: string })
   // Resuming a held draft: hydrate the customer field from the loaded
   // document once, so the header reads correctly without a second lookup
   // UI — the customer picker above is naturally disabled once a document
-  // exists (see below), so this is display-only.
+  // exists (see below). Fetches the real party record (not just its ID)
+  // so the header shows the customer's name, not a raw UUID.
   useEffect(() => {
-    if (resumeDocumentId && doc.data && !customer) {
-      setCustomer({ ID: doc.data.document.CustomerPartyID } as Party);
-    }
+    if (!resumeDocumentId || !doc.data || customer) return;
+    const partyId = doc.data.document.CustomerPartyID;
+    api
+      .get<Party>(`/contacts/parties/${partyId}`)
+      .then(setCustomer)
+      .catch(() => setCustomer({ ID: partyId } as Party));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc.data]);
 

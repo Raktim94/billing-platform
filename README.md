@@ -238,7 +238,7 @@ reference shape.
 
 ## One-command self-hosted install
 
-On Linux or macOS, with [Docker](https://docs.docker.com/get-docker/) installed:
+**Already have Docker?** — on Linux or macOS:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Raktim94/rechvix/main/install.sh | bash
@@ -246,12 +246,37 @@ curl -fsSL https://raw.githubusercontent.com/Raktim94/rechvix/main/install.sh | 
 
 This clones the repo, generates the secrets `deploy/compose/.env` needs, and
 runs `docker compose up -d` (Postgres + migration job + app + worker). It
-prints the URL to open when it's done. On Windows, run the same script
-inside [WSL2](https://learn.microsoft.com/windows/wsl/install) — there's no
-native Windows path yet. See [`install.sh`](install.sh) itself for exactly
-what it does before piping it into a shell, and
+prints the URL to open when it's done. See [`install.sh`](install.sh) itself
+for exactly what it does before piping it into a shell, and
 [`deploy/compose/`](deploy/compose) if you'd rather run the Compose commands
 by hand.
+
+**Starting from a clean machine?** — `scripts/quickstart.*` also installs
+Docker and git first if either is missing, then runs the installer above:
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Raktim94/rechvix/main/scripts/quickstart.sh | bash
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/Raktim94/rechvix/main/scripts/quickstart.ps1 | iex
+```
+
+There's no native Windows path for the app itself — the PowerShell script
+installs [WSL2](https://learn.microsoft.com/windows/wsl/install) (Windows'
+own free Linux subsystem) if it isn't already present and runs the Linux
+quickstart inside it, so `docker` still works as a plain Windows command
+too. If WSL2 has never been enabled on the machine before, Windows needs one
+restart to finish turning it on — the script says so and picks up exactly
+where it left off when you run the same command again. Both quickstart
+scripts are safe to re-run: every step only acts if it hasn't already
+succeeded, and an existing checkout is updated in place rather than
+re-cloned. See [`scripts/quickstart.sh`](scripts/quickstart.sh) and
+[`scripts/quickstart.ps1`](scripts/quickstart.ps1) for exactly what they do.
 
 ## Getting started (development)
 
