@@ -98,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <nav className={styles.nav} aria-label="Primary">
         <div className={styles.wordmark}>
           <span className={styles.mark} aria-hidden="true" />
-          billing-platform
+          rechvix
         </div>
         <ul className={styles.navList}>
           {NAV_ITEMS.map((item) => (

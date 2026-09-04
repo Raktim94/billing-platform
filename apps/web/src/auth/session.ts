@@ -13,7 +13,7 @@ export interface SessionHint {
   userId: string;
 }
 
-const KEY = "billing-platform:session-hint";
+const KEY = "rechvix:session-hint";
 
 export function readSessionHint(): SessionHint | null {
   const raw = localStorage.getItem(KEY);

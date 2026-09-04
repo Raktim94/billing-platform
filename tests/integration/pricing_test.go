@@ -9,13 +9,13 @@ import (
 
 	"github.com/google/uuid"
 
-	catalogueapp "billing-platform/internal/modules/catalogue/app"
-	pricingapp "billing-platform/internal/modules/pricing/app"
-	pricingdomain "billing-platform/internal/modules/pricing/domain"
-	pricingpg "billing-platform/internal/modules/pricing/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/money"
-	"billing-platform/internal/platform/permissions"
+	catalogueapp "rechvix/internal/modules/catalogue/app"
+	pricingapp "rechvix/internal/modules/pricing/app"
+	pricingdomain "rechvix/internal/modules/pricing/domain"
+	pricingpg "rechvix/internal/modules/pricing/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/money"
+	"rechvix/internal/platform/permissions"
 )
 
 func newTestPricingService(t *testing.T) *pricingapp.Service {

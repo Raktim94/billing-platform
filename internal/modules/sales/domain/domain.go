@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	taxdomain "billing-platform/internal/modules/taxation/domain"
-	"billing-platform/internal/platform/money"
+	taxdomain "rechvix/internal/modules/taxation/domain"
+	"rechvix/internal/platform/money"
 )
 
 type DocumentType string

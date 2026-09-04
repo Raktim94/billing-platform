@@ -9,15 +9,15 @@ import (
 
 	"github.com/google/uuid"
 
-	contactsapp "billing-platform/internal/modules/contacts/app"
-	contactsdomain "billing-platform/internal/modules/contacts/domain"
-	contactspg "billing-platform/internal/modules/contacts/pg"
-	inventoryapp "billing-platform/internal/modules/inventory/app"
-	purchasesapp "billing-platform/internal/modules/purchases/app"
-	purchasesdomain "billing-platform/internal/modules/purchases/domain"
-	purchasespg "billing-platform/internal/modules/purchases/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/permissions"
+	contactsapp "rechvix/internal/modules/contacts/app"
+	contactsdomain "rechvix/internal/modules/contacts/domain"
+	contactspg "rechvix/internal/modules/contacts/pg"
+	inventoryapp "rechvix/internal/modules/inventory/app"
+	purchasesapp "rechvix/internal/modules/purchases/app"
+	purchasesdomain "rechvix/internal/modules/purchases/domain"
+	purchasespg "rechvix/internal/modules/purchases/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/permissions"
 )
 
 // accountingSvc is nil here deliberately — see sales_test.go's identical

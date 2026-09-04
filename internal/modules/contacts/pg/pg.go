@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"billing-platform/internal/modules/contacts/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/contacts/domain"
+	"rechvix/internal/platform/database"
 )
 
 func pgUniqueViolation(err error) bool {

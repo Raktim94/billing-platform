@@ -1,4 +1,4 @@
-module billing-platform
+module rechvix
 
 go 1.27.1
 

@@ -27,7 +27,7 @@ import (
 	"net/http"
 	"time"
 
-	"billing-platform/internal/modules/einvoice/domain"
+	"rechvix/internal/modules/einvoice/domain"
 )
 
 const DefaultBaseURL = "https://einv-apisandbox.nic.in"

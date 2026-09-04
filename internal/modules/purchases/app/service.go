@@ -15,15 +15,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	accountingapp "billing-platform/internal/modules/accounting/app"
-	accountingdomain "billing-platform/internal/modules/accounting/domain"
-	inventoryapp "billing-platform/internal/modules/inventory/app"
-	inventorydomain "billing-platform/internal/modules/inventory/domain"
-	"billing-platform/internal/modules/purchases/domain"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/money"
-	"billing-platform/internal/platform/permissions"
+	accountingapp "rechvix/internal/modules/accounting/app"
+	accountingdomain "rechvix/internal/modules/accounting/domain"
+	inventoryapp "rechvix/internal/modules/inventory/app"
+	inventorydomain "rechvix/internal/modules/inventory/domain"
+	"rechvix/internal/modules/purchases/domain"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/money"
+	"rechvix/internal/platform/permissions"
 )
 
 type Service struct {

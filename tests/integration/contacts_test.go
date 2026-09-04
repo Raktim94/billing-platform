@@ -9,11 +9,11 @@ import (
 
 	"github.com/google/uuid"
 
-	contactsapp "billing-platform/internal/modules/contacts/app"
-	contactsdomain "billing-platform/internal/modules/contacts/domain"
-	contactspg "billing-platform/internal/modules/contacts/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/permissions"
+	contactsapp "rechvix/internal/modules/contacts/app"
+	contactsdomain "rechvix/internal/modules/contacts/domain"
+	contactspg "rechvix/internal/modules/contacts/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/permissions"
 )
 
 func newTestContactsService(t *testing.T) *contactsapp.Service {

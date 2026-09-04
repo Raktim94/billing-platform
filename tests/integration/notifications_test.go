@@ -8,13 +8,13 @@ import (
 
 	"github.com/google/uuid"
 
-	notificationsapp "billing-platform/internal/modules/notifications/app"
-	notificationsdomain "billing-platform/internal/modules/notifications/domain"
-	notificationspg "billing-platform/internal/modules/notifications/pg"
-	mockprovider "billing-platform/internal/modules/notifications/v1/mock"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/outbox"
-	"billing-platform/internal/platform/permissions"
+	notificationsapp "rechvix/internal/modules/notifications/app"
+	notificationsdomain "rechvix/internal/modules/notifications/domain"
+	notificationspg "rechvix/internal/modules/notifications/pg"
+	mockprovider "rechvix/internal/modules/notifications/v1/mock"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/outbox"
+	"rechvix/internal/platform/permissions"
 )
 
 // newTestNotificationsService returns the service plus a handlers map for

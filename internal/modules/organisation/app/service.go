@@ -11,10 +11,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/organisation/domain"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/organisation/domain"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/permissions"
 )
 
 type Service struct {

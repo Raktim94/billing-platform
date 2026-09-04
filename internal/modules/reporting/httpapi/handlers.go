@@ -13,11 +13,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/reporting/app"
-	"billing-platform/internal/modules/reporting/domain"
-	"billing-platform/internal/platform/export"
-	httpx "billing-platform/internal/platform/http"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/reporting/app"
+	"rechvix/internal/modules/reporting/domain"
+	"rechvix/internal/platform/export"
+	httpx "rechvix/internal/platform/http"
+	"rechvix/internal/platform/permissions"
 )
 
 type Handlers struct{ svc *app.Service }

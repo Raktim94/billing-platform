@@ -23,8 +23,8 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"billing-platform/internal/platform/database"
-	"billing-platform/migrations"
+	"rechvix/internal/platform/database"
+	"rechvix/migrations"
 )
 
 // sharedPool is set up once for the whole integration test binary

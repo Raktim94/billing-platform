@@ -6,9 +6,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/contacts/domain"
-	"billing-platform/internal/platform/importer"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/contacts/domain"
+	"rechvix/internal/platform/importer"
+	"rechvix/internal/platform/permissions"
 )
 
 // ImportParties bulk-creates customers/suppliers from parsed spreadsheet

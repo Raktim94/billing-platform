@@ -14,8 +14,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/taxation/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/taxation/domain"
+	"rechvix/internal/platform/database"
 )
 
 type Service struct {

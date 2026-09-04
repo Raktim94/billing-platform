@@ -6,9 +6,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/identity/domain"
-	orgapp "billing-platform/internal/modules/organisation/app"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/identity/domain"
+	orgapp "rechvix/internal/modules/organisation/app"
+	"rechvix/internal/platform/database"
 )
 
 // fakeRunner runs fn directly against the calling goroutine with no real

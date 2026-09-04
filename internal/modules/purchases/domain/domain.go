@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/platform/money"
 )
 
 type DocumentType string

@@ -7,9 +7,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/identity/app"
-	"billing-platform/internal/modules/identity/domain"
-	httpx "billing-platform/internal/platform/http"
+	"rechvix/internal/modules/identity/app"
+	"rechvix/internal/modules/identity/domain"
+	httpx "rechvix/internal/platform/http"
 )
 
 // MountAPIKeys registers the API key management routes into an

@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/gstindia/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/gstindia/domain"
+	"rechvix/internal/platform/database"
 )
 
 type scannable interface {

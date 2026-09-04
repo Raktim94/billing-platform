@@ -6,7 +6,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/ewaybill/canonical"
+	"rechvix/internal/modules/ewaybill/canonical"
 )
 
 func mkRule(stateCode *string, minValue string, from string, until *string) Rule {

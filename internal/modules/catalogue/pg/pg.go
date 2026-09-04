@@ -15,8 +15,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"billing-platform/internal/modules/catalogue/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/catalogue/domain"
+	"rechvix/internal/platform/database"
 )
 
 // pgUniqueViolation reports whether err is a Postgres unique_violation

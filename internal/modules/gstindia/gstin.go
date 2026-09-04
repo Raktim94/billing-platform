@@ -3,7 +3,7 @@ package gstindia
 import (
 	"regexp"
 
-	"billing-platform/internal/modules/gstindia/domain"
+	"rechvix/internal/modules/gstindia/domain"
 )
 
 // gstinPattern is a structural check only — 2-digit state code, 10-char

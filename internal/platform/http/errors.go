@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"billing-platform/internal/platform/logging"
+	"rechvix/internal/platform/logging"
 )
 
 // AppError is the error type application/use-case handlers return when

@@ -7,10 +7,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/identity/domain"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/crypto"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/identity/domain"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/crypto"
+	"rechvix/internal/platform/permissions"
 )
 
 // apiKeyPrefixLen is how many characters of the raw key are stored in the

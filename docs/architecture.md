@@ -641,7 +641,7 @@ document and the open questions in `docs/research.md`.
 
 ## 17. Exact repository structure
 
-Created (empty skeleton, `.gitkeep` placeholders) at `~/billing-platform`:
+Created (empty skeleton, `.gitkeep` placeholders) at `~/rechvix`:
 
 ```
 apps/{server,worker,web,desktop}

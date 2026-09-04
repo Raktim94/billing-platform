@@ -9,7 +9,7 @@ package portal
 import (
 	"context"
 
-	"billing-platform/internal/modules/ewaybill/canonical"
+	"rechvix/internal/modules/ewaybill/canonical"
 )
 
 // PreparedFile is one output file ready to hand to the user — filename is

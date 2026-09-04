@@ -3,7 +3,7 @@ package httpx
 import (
 	"context"
 
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/platform/permissions"
 )
 
 var principalContextKey = &contextKey{"httpx.principal"}

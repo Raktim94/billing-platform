@@ -45,7 +45,7 @@ export function LoginPage() {
       <div className={styles.card}>
         <div className={styles.wordmark}>
           <span className={styles.mark} aria-hidden="true" />
-          billing-platform
+          rechvix
         </div>
         <h1 className={styles.title}>Sign in</h1>
         <p className={styles.subtitle}>Enter your work email and password.</p>

@@ -9,10 +9,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/identity/domain"
-	orgapp "billing-platform/internal/modules/organisation/app"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/crypto"
+	"rechvix/internal/modules/identity/domain"
+	orgapp "rechvix/internal/modules/organisation/app"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/crypto"
 )
 
 type fakeAuditRecorder struct {

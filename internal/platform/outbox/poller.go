@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/platform/database"
 )
 
 // Store is the poller-facing surface (Writer plus claim/mark) — *PGStore

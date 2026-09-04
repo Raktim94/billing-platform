@@ -6,9 +6,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/catalogue/domain"
-	"billing-platform/internal/platform/importer"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/catalogue/domain"
+	"rechvix/internal/platform/importer"
+	"rechvix/internal/platform/permissions"
 )
 
 // ImportProducts bulk-creates products from parsed spreadsheet rows

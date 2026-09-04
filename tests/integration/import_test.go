@@ -8,14 +8,14 @@ import (
 
 	"github.com/google/uuid"
 
-	catalogueapp "billing-platform/internal/modules/catalogue/app"
-	cataloguepg "billing-platform/internal/modules/catalogue/pg"
-	contactsapp "billing-platform/internal/modules/contacts/app"
-	contactsdomain "billing-platform/internal/modules/contacts/domain"
-	contactspg "billing-platform/internal/modules/contacts/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/importer"
-	"billing-platform/internal/platform/permissions"
+	catalogueapp "rechvix/internal/modules/catalogue/app"
+	cataloguepg "rechvix/internal/modules/catalogue/pg"
+	contactsapp "rechvix/internal/modules/contacts/app"
+	contactsdomain "rechvix/internal/modules/contacts/domain"
+	contactspg "rechvix/internal/modules/contacts/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/importer"
+	"rechvix/internal/platform/permissions"
 )
 
 func newTestCatalogueServiceForImport(t *testing.T) *catalogueapp.Service {

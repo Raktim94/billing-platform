@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	orgpg "billing-platform/internal/modules/organisation/pg"
+	orgpg "rechvix/internal/modules/organisation/pg"
 )
 
 // TestRLS_BlocksCrossOrganisationReads is the building block behind

@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	accountingapp "billing-platform/internal/modules/accounting/app"
-	accountingdomain "billing-platform/internal/modules/accounting/domain"
-	purchasesapp "billing-platform/internal/modules/purchases/app"
-	purchasesdomain "billing-platform/internal/modules/purchases/domain"
-	reportingapp "billing-platform/internal/modules/reporting/app"
-	reportingdomain "billing-platform/internal/modules/reporting/domain"
-	reportingpg "billing-platform/internal/modules/reporting/pg"
-	"billing-platform/internal/platform/permissions"
+	accountingapp "rechvix/internal/modules/accounting/app"
+	accountingdomain "rechvix/internal/modules/accounting/domain"
+	purchasesapp "rechvix/internal/modules/purchases/app"
+	purchasesdomain "rechvix/internal/modules/purchases/domain"
+	reportingapp "rechvix/internal/modules/reporting/app"
+	reportingdomain "rechvix/internal/modules/reporting/domain"
+	reportingpg "rechvix/internal/modules/reporting/pg"
+	"rechvix/internal/platform/permissions"
 )
 
 func newTestReportingService(t *testing.T, accountingSvc *accountingapp.Service) *reportingapp.Service {

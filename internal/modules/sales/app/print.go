@@ -7,11 +7,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	orgdomain "billing-platform/internal/modules/organisation/domain"
-	"billing-platform/internal/modules/sales/domain"
-	"billing-platform/internal/modules/sales/printing"
-	"billing-platform/internal/platform/money"
-	"billing-platform/internal/platform/permissions"
+	orgdomain "rechvix/internal/modules/organisation/domain"
+	"rechvix/internal/modules/sales/domain"
+	"rechvix/internal/modules/sales/printing"
+	"rechvix/internal/platform/money"
+	"rechvix/internal/platform/permissions"
 )
 
 // BuildInvoiceData assembles a printing.InvoiceData for a document —

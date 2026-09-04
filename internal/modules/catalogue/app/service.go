@@ -12,10 +12,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/catalogue/domain"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/catalogue/domain"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/permissions"
 )
 
 type Service struct {

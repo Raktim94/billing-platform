@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/taxation/domain"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/modules/taxation/domain"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/money"
 )
 
 type scannable interface {

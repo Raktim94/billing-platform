@@ -42,8 +42,8 @@ import (
 	"strings"
 	"time"
 
-	"billing-platform/internal/modules/ewaybill/canonical"
-	"billing-platform/internal/modules/ewaybill/portal"
+	"rechvix/internal/modules/ewaybill/canonical"
+	"rechvix/internal/modules/ewaybill/portal"
 )
 
 const SchemaVersion = "v2-verified-field-names"

@@ -13,10 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/sales/domain"
-	taxdomain "billing-platform/internal/modules/taxation/domain"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/modules/sales/domain"
+	taxdomain "rechvix/internal/modules/taxation/domain"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/money"
 )
 
 func pgUniqueViolation(err error) bool {

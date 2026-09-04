@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/logging"
+	"rechvix/internal/platform/logging"
 )
 
 type contextKey struct{ name string }

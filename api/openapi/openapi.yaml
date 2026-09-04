@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: billing-platform API
+  title: rechvix API
   version: "0.1.0"
   description: >
     Multi-company, multi-branch, multi-warehouse billing, inventory,

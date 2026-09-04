@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"billing-platform/internal/modules/logistics/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/logistics/domain"
+	"rechvix/internal/platform/database"
 )
 
 func nullIfEmpty(s string) *string {
