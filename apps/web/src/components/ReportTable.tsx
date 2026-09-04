@@ -1,24 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api-client";
+import { useReportTable } from "../lib/useReportTable";
 import layout from "../pages/DashboardPage.module.css";
 import ui from "./ui.module.css";
 
-/** internal/platform/export.Table — every /reports/* endpoint's shape
- * (format=json, the default) — title/headers/rows, rows pre-stringified.
- * One generic renderer for every report table in the app, so each screen
- * (Inventory, Purchases, Accounting, GST) just points this at a path
- * instead of hand-building a table per report. */
-interface ReportTableData {
-  title: string;
-  headers: string[];
-  rows: string[][];
-}
-
+// One generic renderer for every report table in the app (Inventory,
+// Purchases, Accounting, GST, Reports) — each screen just points this at
+// a path instead of hand-building a table per report.
 export function ReportTable({ path, emptyLabel }: { path: string; emptyLabel?: string }) {
-  const query = useQuery({
-    queryKey: ["report-table", path],
-    queryFn: () => api.get<ReportTableData>(path),
-  });
+  const query = useReportTable(path);
 
   if (query.isPending) {
     return <div className={layout.skeleton} style={{ height: 120 }} aria-hidden="true" />;
