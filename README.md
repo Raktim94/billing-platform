@@ -36,12 +36,17 @@ behind every major decision.
 
 - [Why this exists](#why-this-exists)
 - [Brand](#brand)
+- [Screenshots](#screenshots)
 - [Core design decisions](#core-design-decisions)
 - [What's built](#whats-built)
+- [Screens & features](#screens--features)
 - [Tech stack](#tech-stack)
 - [Repository structure](#repository-structure)
+- [One-command self-hosted install](#one-command-self-hosted-install)
 - [Getting started (development)](#getting-started-development)
 - [Documentation](#documentation)
+- [User manual](#user-manual)
+- [Contributing](#contributing)
 - [Status and roadmap](#status-and-roadmap)
 - [License](#license)
 
@@ -77,12 +82,25 @@ reports, closing the books — works fully offline.
 </p>
 
 The two banners above are brand/marketing artwork, not application
-screenshots — Rechvix's real frontend (a working Vite/React app covering
-Dashboard, Sales, Purchases, Inventory, Contacts, Accounting, GST/Tax, and
-Reports — see [What's built](#whats-built)) already exists and is
-functional, but real UI screenshots aren't included in this pass yet. A
-square logo variant is also available at
+screenshots — the real UI screenshots are in the next section. A square
+logo variant is also available at
 [`docs/assets/brand/logo-square.png`](docs/assets/brand/logo-square.png).
+
+## Screenshots
+
+Real screens from a running instance — seeded with a demo grocery business
+(products, customers, a supplier, and a handful of finalized invoices and a
+purchase), not mockups.
+
+| | |
+|---|---|
+| ![Dashboard](docs/assets/screenshots/dashboard.webp) **Dashboard** — real-time sales/purchase KPIs and a sales trend chart. | ![Billing](docs/assets/screenshots/billing-pos.webp) **Billing (POS)** — search or scan a product, stock and price show instantly. |
+| ![Finalized invoice](docs/assets/screenshots/invoice-finalized.webp) **Finalized tax invoice** — GST computed automatically from each line's HSN code, e-Way Bill eligibility already checked. | ![Sales list](docs/assets/screenshots/sales-list.webp) **Sales** — every quotation, order, and invoice, draft or finalized. |
+| ![Inventory](docs/assets/screenshots/inventory.webp) **Inventory** — stock valuation per product and warehouse, backed by an append-only movement ledger. | ![Purchases](docs/assets/screenshots/purchases.webp) **Purchases** — what you've bought from suppliers, same draft-then-finalize flow. |
+| ![Accounting](docs/assets/screenshots/accounting.webp) **Accounting** — a live, always-balanced trial balance and who owes you / who you owe. | ![GST / e-Way Bill](docs/assets/screenshots/gst-eway-bill.webp) **GST / Tax** — the free-government-portal e-Way Bill assistant, saved vehicles and transporters. |
+| ![Reports](docs/assets/screenshots/reports.webp) **Reports** — sales invoices, gross profit by product, purchase summary. | ![Contacts](docs/assets/screenshots/contacts.webp) **Contacts** — customers and suppliers, with credit limits and payment terms. |
+| ![Catalogue](docs/assets/screenshots/catalogue.webp) **Catalogue** — every product, with its HSN/SAC code for GST classification. | ![Settings](docs/assets/screenshots/settings.webp) **Settings** — business, legal entity, branch, warehouse, and GST registration. |
+| ![First-run setup](docs/assets/screenshots/bootstrap.webp) **First-run setup** — organisation, legal entity, branch, warehouse, and owner account, in one screen. | ![Dashboard, dark mode](docs/assets/screenshots/dashboard-dark.webp) **Dashboard, dark mode.** |
 
 ## Core design decisions
 
@@ -163,6 +181,29 @@ Stage 11's full security/performance hardening pass (load testing at
 100k+ products, a complete IDOR/CSRF/session-fixation review, backup/
 restore verification) is still in progress.
 
+## Screens & features
+
+| Screen | What it does today |
+|---|---|
+| **Dashboard** | Today's sales/collections/purchases, outstanding receivable/payable, current stock value, low-stock count, and a sales trend chart — all from real finalized documents, no manual entry. |
+| **Sales / Billing** | Barcode/keyboard-driven billing counter: quotations, proforma, sales orders, delivery challans, tax/cash/credit invoices, POS billing, credit/debit notes, sales returns. Every line is saved to the server immediately; finalize computes tax server-side and posts inventory + the accounting journal atomically. |
+| **Purchases** | Purchase orders, GRN, purchase invoices, and returns from suppliers, same draft-then-finalize flow as Sales. |
+| **Inventory & Catalogue** | Perpetual multi-warehouse stock via an append-only movement ledger (never a directly-editable number), batch/lot/serial tracking, weighted-average costing, reservations and reorder policies. Catalogue covers products/variants/SKUs/barcodes and units of measure with auditable conversions. |
+| **Contacts** | Customers and suppliers (a party can be either or both), with credit limits, payment terms, tax registrations, and multiple addresses. |
+| **Accounting** | Full double-entry: chart of accounts, journals, fiscal periods, receipts/payments/reconciliations, auto-posted from finalized documents, customer/supplier ledgers derived fresh from journal lines (never a mutable balance column), ageing, fiscal-year locking. |
+| **GST & e-Way Bill** | CGST/SGST/UTGST vs. IGST, cess, HSN-based tax rates with validity windows, e-Invoice (IRN/QR) against the NIC sandbox, and a free-first e-Way Bill workflow — a no-paid-API "prepare → open the government portal → enter the result" path, or an automatic path through a paid government-approved connection. |
+| **Reports** | Sales/purchase/inventory/accounting/tax reports, GSTR-1-oriented preparation (explicitly labeled as prep, not a filing submission), CSV/XLSX/JSON/PDF export. |
+| **Settings** | Business, legal entity, branch, warehouse, and GST registration details. |
+| **Integrations** *(placeholder)* | Scoped API keys and HMAC-signed webhooks exist in the backend today; a dedicated UI for managing them is Stage 11+ scope. |
+
+**Coming next** — Stage 11 (security/performance hardening): a full IDOR/
+CSRF/session-fixation/webhook-replay review, load testing at 100k+ products,
+backup/restore verification, and a migration test against a prior schema.
+Explicitly deferred beyond that (see [`docs/TODO.md`](docs/TODO.md) for the
+full list): a split GST input-tax-credit line on purchases (GSTR-3B-oriented
+reporting needs it), a bulk e-Way Bill queue, the Tauri 2 desktop shell, and
+wiring up the Redis/MinIO services already provisioned in Compose.
+
 ## Tech stack
 
 | Layer | Choice |
@@ -194,6 +235,23 @@ Each `internal/modules/*` package follows `domain/` (pure business rules,
 no I/O) → `app/` (use-case orchestration) → `pg/` (repository
 implementation) layering — see `internal/modules/organisation` for the
 reference shape.
+
+## One-command self-hosted install
+
+On Linux or macOS, with [Docker](https://docs.docker.com/get-docker/) installed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Raktim94/rechvix/main/install.sh | bash
+```
+
+This clones the repo, generates the secrets `deploy/compose/.env` needs, and
+runs `docker compose up -d` (Postgres + migration job + app + worker). It
+prints the URL to open when it's done. On Windows, run the same script
+inside [WSL2](https://learn.microsoft.com/windows/wsl/install) — there's no
+native Windows path yet. See [`install.sh`](install.sh) itself for exactly
+what it does before piping it into a shell, and
+[`deploy/compose/`](deploy/compose) if you'd rather run the Compose commands
+by hand.
 
 ## Getting started (development)
 
@@ -238,10 +296,9 @@ docker compose up -d
 See `internal/platform/config/config.go` for the full list of environment
 variables (session cookie settings, Argon2id tuning, OTel exporter target,
 CORS allow-list, etc.) — every required value fails fast at startup with a
-clear message rather than a nil-pointer panic later. A one-command
-`./install.sh` matching [nodedr-pos](https://github.com/Raktim94/nodedr-pos)'s
-"clone and run" experience is Stage 11 scope; the steps above are the
-current path.
+clear message rather than a nil-pointer panic later. For a one-command
+"clone and run" setup instead of the manual steps above, see
+[One-command self-hosted install](#one-command-self-hosted-install).
 
 ## Documentation
 
@@ -258,7 +315,22 @@ current path.
 - [`docs/TODO.md`](docs/TODO.md) — the live, stage-by-stage build checklist — the single most accurate source for "what's actually done."
 - [`docs/adr/`](docs/adr/) — Architecture Decision Records for specific non-obvious choices (e.g. Argon2id parameters, `GetByID` organisation scoping).
 - [`CHANGELOG.md`](CHANGELOG.md) — derived from real git history, one entry per shipped stage.
+- [`docs/Rechvix-User-Manual.pdf`](docs/Rechvix-User-Manual.pdf) — the non-developer walkthrough: setup, every screen, common workflows, FAQ.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development setup, test commands, code conventions, PR process.
 - [Wiki](../../wiki) — narrative documentation: getting oriented in the codebase, the tax engine explained, the roadmap in prose form.
+
+## User manual
+
+A full walkthrough for non-developers — self-hosting quick start, first-run
+setup, every screen explained, common workflows (create an invoice, record
+a purchase, generate an e-Way Bill), and troubleshooting/FAQ:
+[`docs/Rechvix-User-Manual.pdf`](docs/Rechvix-User-Manual.pdf).
+
+## Contributing
+
+Bug reports and pull requests are welcome — see
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the development setup, test
+commands, code conventions, and PR process.
 
 ## Status and roadmap
 
@@ -280,7 +352,9 @@ test against a prior schema.
 
 Copyright © 2026 [Nodedr Infotech Private Limited](https://www.nodedr.com/)
 and Raktim Ranjit. Licensed under the
-[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). In short:
+[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0) — the
+[`LICENSE`](LICENSE) file itself carries this copyright notice ahead of the
+full license text. In short:
 you're free to self-host, use, and modify this software for your business.
 If you modify it and run that modified version as a network service for
 others, you must make your modified source available to those users under
