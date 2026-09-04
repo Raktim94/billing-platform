@@ -63,7 +63,14 @@ if [ -f .env ]; then
   log ".env already exists — leaving it untouched. Delete it first if you want fresh secrets."
 else
   log "Generating deploy/compose/.env with fresh secrets ..."
-  gen_secret() { openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64; }
+  # Hex, not base64: these two feed straight into unescaped postgres://
+  # URLs in docker-compose.yml (POSTGRES_PASSWORD, BILLING_APP_PASSWORD).
+  # base64's alphabet includes '/', which a URL parser reads as the end of
+  # the userinfo section — a password containing one silently breaks the
+  # DSN (migrate/app/worker all fail to connect). Hex has no such
+  # characters. AEAD_ENCRYPTION_KEY never goes into a URL, so base64 is
+  # fine there.
+  gen_secret() { openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
   gen_key()    { openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64; }
 
   cp .env.example .env
