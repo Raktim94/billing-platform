@@ -35,6 +35,12 @@ type ServerConfig struct {
 	// ShutdownTimeout bounds how long graceful shutdown waits for
 	// in-flight requests to finish before forcing close.
 	ShutdownTimeout time.Duration
+	// WebDistDir is where apps/web's built static assets live, if at all
+	// — server.Dockerfile's webbuild stage copies apps/web/dist here.
+	// httpx.MountSPA no-ops when the directory doesn't exist (local `go
+	// run`, `-migrate`), so this is safe to leave at its default anywhere
+	// that isn't the Docker image.
+	WebDistDir string
 }
 
 type DatabaseConfig struct {
@@ -153,6 +159,7 @@ func Load() (Config, error) {
 			HTTPPort:        optInt("HTTP_PORT", 8080),
 			AllowedOrigins:  splitCSV(optString("CORS_ALLOWED_ORIGINS", "")),
 			ShutdownTimeout: optDuration("SHUTDOWN_TIMEOUT", 15*time.Second),
+			WebDistDir:      optString("WEB_DIST_DIR", "/app/web"),
 		},
 		Database: DatabaseConfig{
 			DSN:         requireString("DATABASE_DSN"),
