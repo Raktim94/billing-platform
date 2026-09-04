@@ -196,6 +196,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => setMenuOpen((v) => !v)}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
+            aria-label="User menu"
           >
             <span className={styles.avatar} aria-hidden="true">
               U

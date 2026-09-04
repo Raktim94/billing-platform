@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_sales_documents_organisation_id_issue_date;
+DROP INDEX IF EXISTS idx_parties_organisation_id_legal_name;
+DROP INDEX IF EXISTS idx_products_organisation_id_name;
