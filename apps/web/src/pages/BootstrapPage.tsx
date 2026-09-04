@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate } from "@tanstack/react-router";
 import styles from "./auth.module.css";
+import { Logo } from "../components/Logo";
 import { api, ApiError } from "../lib/api-client";
 import { GST_STATE_CODES } from "../lib/gstStateCodes";
 
@@ -98,7 +99,7 @@ export function BootstrapPage() {
     <div className={styles.page}>
       <div className={styles.card} style={{ maxWidth: 460 }}>
         <div className={styles.wordmark}>
-          <span className={styles.mark} aria-hidden="true" />
+          <Logo />
           rechvix
         </div>
         <h1 className={styles.title}>Set up your business</h1>
@@ -186,6 +187,7 @@ export function BootstrapPage() {
           </button>
         </form>
       </div>
+      <p className={styles.brandFooter}>Built by NodeDR Infotech Private Limited</p>
     </div>
   );
 }

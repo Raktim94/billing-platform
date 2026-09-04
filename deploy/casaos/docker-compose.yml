@@ -13,9 +13,10 @@
 # CasaOS instance. Cut a `v0.1.0` tag (or run the workflow via
 # workflow_dispatch) before actually submitting this to CasaOS-AppStore.
 #
-# Also a known gap: icon/thumbnail/screenshot assets below are placeholder
-# paths, not real design assets — this project has no logo yet (no
-# frontend exists as of Stage 10a). Replace before real submission.
+# icon.png/thumbnail.png now live alongside this file (generated from the
+# same mark apps/web uses — src/components/Logo.tsx) so the jsdelivr URLs
+# below actually resolve. Still worth a real designer pass before a
+# CasaOS-AppStore submission, but they're no longer 404s.
 
 name: rechvix
 
@@ -158,9 +159,9 @@ x-casaos:
       workflow that never requires a paid government API. AGPL-3.0
       licensed, same as this project's sibling, nodedr-pos.
 
-      Note: this is an early, backend-only release — a web interface
-      (apps/web) is still in development as of this version. The API is
-      fully functional; a UI is coming in a later release.
+      Ships with a full web UI (dashboard, sales, purchases, inventory,
+      contacts, accounting, GST/tax, reports, settings) — `apps/server`
+      serves it directly, no separate frontend container needed.
   tips:
     before_install:
       en_US: |
@@ -171,9 +172,8 @@ x-casaos:
         Your data persists at `/DATA/AppData/rechvix/postgres`,
         following CasaOS/ZimaOS's standard backup/restore convention.
 
-        This early release has no web interface yet — use the REST API
-        directly (see the project's docs/api.md once published) or wait
-        for the upcoming apps/web release.
+        First run: open the app and go to /setup to create your business
+        (organisation, first branch/warehouse, and owner login).
   index: /
   scheme: http
   port_map: "8090"

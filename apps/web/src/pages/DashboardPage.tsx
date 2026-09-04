@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import ReactECharts from "echarts-for-react";
 import styles from "./DashboardPage.module.css";
+import { QuickAccess } from "../components/QuickAccess";
 import { StatCard } from "../components/StatCard";
 import { api } from "../lib/api-client";
 import { formatMoney, isZeroMoney, moneyToApproxNumber, type Money } from "../lib/money";
@@ -56,6 +57,8 @@ export function DashboardPage() {
           <p className={styles.subtitle}>Today's business, at a glance.</p>
         </div>
       </div>
+
+      <QuickAccess />
 
       {dashboard.isError ? (
         <div className={styles.errorState} role="alert">
