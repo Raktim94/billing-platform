@@ -132,6 +132,7 @@
   font-size: var(--text-sm);
   font-weight: 500;
   white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .navLink:hover {
@@ -198,6 +199,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .iconButton:hover {
@@ -213,6 +215,7 @@
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   font-weight: 600;
+  transition: background 0.15s ease;
 }
 
 .quickCreate:hover {

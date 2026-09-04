@@ -29,6 +29,7 @@
      SalesListPage's "+ New sale") — without this, the browser's default
      anchor underline runs straight through the filled pill. */
   text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .btnPrimary {

@@ -29,6 +29,7 @@
   font-size: var(--text-sm);
   font-weight: 600;
   box-shadow: var(--shadow-card);
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .tile svg {
@@ -36,9 +37,13 @@
   color: var(--color-accent);
 }
 
-.tile:hover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
+@media (hover: hover) {
+  .tile:hover {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    box-shadow: var(--shadow-popover);
+    transform: translateY(-1px);
+  }
 }
 
 .tile:focus-visible {
