@@ -1,10 +1,15 @@
-# billing-server — the HTTP API composition root (apps/server).
-#
-# No frontend embed yet: apps/web doesn't exist as of this Dockerfile
-# (docs/TODO.md Stage 10). When it does, add a Node build stage here that
-# builds the SPA and COPYs its output into the final image next to the Go
-# binary, and have apps/server serve it as a static fallback route. Do not
-# fake that step now.
+# billing-server — the HTTP API composition root (apps/server), now with
+# apps/web's built SPA served alongside it (internal/platform/http's
+# MountSPA — a chi NotFound fallback, not a Go embed, so the two build
+# toolchains stay independent and this stage can be skipped entirely by
+# anything that only wants the API, e.g. a horizontally-scaled deployment
+# behind a CDN/static host for the frontend instead).
+FROM node:22-alpine AS webbuild
+WORKDIR /web
+COPY apps/web/package.json apps/web/package-lock.json* ./
+RUN npm ci
+COPY apps/web/ .
+RUN npm run build
 
 FROM golang:1.27.1-bookworm AS build
 WORKDIR /src
@@ -36,6 +41,7 @@ RUN n=0; until apk add --no-cache ca-certificates wget; do \
     && addgroup -S billing && adduser -S billing -G billing
 WORKDIR /app
 COPY --from=build /out/server /app/server
+COPY --from=webbuild --chown=billing:billing /web/dist /app/web
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
     CMD wget -q -O- --no-check-certificate http://localhost:8080/health/live || exit 1

@@ -405,6 +405,13 @@ func run() error {
 		})
 	})
 
+	// Serves apps/web's built SPA (if present — see WebDistDir's doc
+	// comment) for everything that isn't an /api/* or /health/* route
+	// registered above. Must come after every r.Route/r.Get above: chi's
+	// NotFound handler is whatever was last set, and this is deliberately
+	// the catch-all.
+	httpx.MountSPA(router, cfg.Server.WebDistDir)
+
 	server := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Server.HTTPPort),
 		Handler:           router,
