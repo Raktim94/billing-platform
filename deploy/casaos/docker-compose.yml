@@ -6,12 +6,10 @@
 # a self-hosted `git clone` flow), CasaOS installs straight from this
 # compose file with no access to the repo — every image below is a
 # pre-built, version-pinned GHCR tag, published by
-# .github/workflows/docker-publish.yml. KNOWN GAP, not yet done: that
-# workflow hasn't run against a real tag yet as of this commit, so these
-# image tags don't exist on GHCR yet — this manifest is schema-validated
-# (`docker compose config -q`, passing) but not yet installable from a real
-# CasaOS instance. Cut a `v0.1.0` tag (or run the workflow via
-# workflow_dispatch) before actually submitting this to CasaOS-AppStore.
+# .github/workflows/docker-publish.yml. rechvix-server:0.1.0 and
+# rechvix-worker:0.1.0 were cut via workflow_dispatch and are live on GHCR,
+# so this manifest is both schema-validated (`docker compose config -q`,
+# passing) and actually installable from a real CasaOS/ZimaOS instance.
 #
 # icon.png/thumbnail.png now live alongside this file (generated from the
 # same mark apps/web uses — src/components/Logo.tsx) so the jsdelivr URLs
