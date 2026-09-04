@@ -17,7 +17,13 @@ FROM alpine:3.22 AS runtime
 # apps/worker has no HTTP endpoint (it's a pure background poller, not a
 # server) — ca-certificates only, plus busybox's pidof for the process-
 # liveness HEALTHCHECK below (no HTTP surface to probe instead).
-RUN apk add --no-cache ca-certificates \
+# Alpine's CDN mirror occasionally returns a transient fetch error under load
+# ("temporary error (try again later)") which apk doesn't retry on its own —
+# retry a few times before failing the build.
+RUN n=0; until apk add --no-cache ca-certificates; do \
+      n=$((n+1)); [ "$n" -ge 5 ] && exit 1; \
+      echo "apk add failed, retrying ($n/5)..."; sleep 5; \
+    done \
     && addgroup -S billing && adduser -S billing -G billing
 WORKDIR /app
 COPY --from=build /out/worker /app/worker

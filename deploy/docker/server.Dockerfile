@@ -26,7 +26,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server 
 # busybox. ca-certificates is required — pgx dials Postgres over TLS in
 # most managed/cloud deployments.
 FROM alpine:3.22 AS runtime
-RUN apk add --no-cache ca-certificates wget \
+# Alpine's CDN mirror occasionally returns a transient fetch error under load
+# ("temporary error (try again later)") which apk doesn't retry on its own —
+# retry a few times before failing the build.
+RUN n=0; until apk add --no-cache ca-certificates wget; do \
+      n=$((n+1)); [ "$n" -ge 5 ] && exit 1; \
+      echo "apk add failed, retrying ($n/5)..."; sleep 5; \
+    done \
     && addgroup -S billing && adduser -S billing -G billing
 WORKDIR /app
 COPY --from=build /out/server /app/server
