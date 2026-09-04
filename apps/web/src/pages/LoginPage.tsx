@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate } from "@tanstack/react-router";
 import styles from "./auth.module.css";
+import { Logo } from "../components/Logo";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError } from "../lib/api-client";
 
@@ -44,7 +45,7 @@ export function LoginPage() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.wordmark}>
-          <span className={styles.mark} aria-hidden="true" />
+          <Logo />
           rechvix
         </div>
         <h1 className={styles.title}>Sign in</h1>
@@ -113,6 +114,7 @@ export function LoginPage() {
           </button>
         </form>
       </div>
+      <p className={styles.brandFooter}>Built by NodeDR Infotech Private Limited</p>
     </div>
   );
 }

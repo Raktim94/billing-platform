@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import styles from "./AppShell.module.css";
+import { Logo } from "./Logo";
 import { useAuth } from "../auth/AuthProvider";
 import { useTheme } from "../theme/ThemeProvider";
 import { api } from "../lib/api-client";
@@ -97,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
       <nav className={styles.nav} aria-label="Primary">
         <div className={styles.wordmark}>
-          <span className={styles.mark} aria-hidden="true" />
+          <Logo />
           rechvix
         </div>
         <ul className={styles.navList}>
@@ -113,6 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </li>
           ))}
         </ul>
+        <p className={styles.navFooter}>NodeDR Infotech Private Limited</p>
       </nav>
 
       <header className={styles.topbar}>
