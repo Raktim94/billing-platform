@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	identityapp "billing-platform/internal/modules/identity/app"
+	identityapp "rechvix/internal/modules/identity/app"
 )
 
 // TestAuditLogWrittenForLoginAndPasswordChange verifies brief §30's

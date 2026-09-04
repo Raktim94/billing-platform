@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"billing-platform/internal/modules/einvoice/domain"
+	"rechvix/internal/modules/einvoice/domain"
 )
 
 // Provider is safe for concurrent use. FailNextGenerateIRN lets a test

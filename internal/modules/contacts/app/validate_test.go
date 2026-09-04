@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"billing-platform/internal/modules/contacts/domain"
+	"rechvix/internal/modules/contacts/domain"
 )
 
 func TestValidateCreateParty(t *testing.T) {

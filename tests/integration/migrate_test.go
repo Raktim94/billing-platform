@@ -15,8 +15,8 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"billing-platform/internal/platform/database"
-	"billing-platform/migrations"
+	"rechvix/internal/platform/database"
+	"rechvix/migrations"
 )
 
 // TestMigrate_UpAndDownRoundTrip verifies every migration's down.sql

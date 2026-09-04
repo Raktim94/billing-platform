@@ -29,37 +29,37 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	accountingapp "billing-platform/internal/modules/accounting/app"
-	accountingpg "billing-platform/internal/modules/accounting/pg"
-	"billing-platform/internal/modules/ai"
-	catalogueapp "billing-platform/internal/modules/catalogue/app"
-	cataloguepg "billing-platform/internal/modules/catalogue/pg"
-	contactsapp "billing-platform/internal/modules/contacts/app"
-	contactspg "billing-platform/internal/modules/contacts/pg"
-	"billing-platform/internal/modules/gstindia"
-	gstindiapg "billing-platform/internal/modules/gstindia/pg"
-	identityapp "billing-platform/internal/modules/identity/app"
-	identitypg "billing-platform/internal/modules/identity/pg"
-	inventoryapp "billing-platform/internal/modules/inventory/app"
-	inventorypg "billing-platform/internal/modules/inventory/pg"
-	orgapp "billing-platform/internal/modules/organisation/app"
-	orgpg "billing-platform/internal/modules/organisation/pg"
-	pricingapp "billing-platform/internal/modules/pricing/app"
-	pricingpg "billing-platform/internal/modules/pricing/pg"
-	reportingapp "billing-platform/internal/modules/reporting/app"
-	reportingpg "billing-platform/internal/modules/reporting/pg"
-	salesapp "billing-platform/internal/modules/sales/app"
-	salespg "billing-platform/internal/modules/sales/pg"
-	taxationapp "billing-platform/internal/modules/taxation/app"
-	taxationpg "billing-platform/internal/modules/taxation/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/config"
-	appcrypto "billing-platform/internal/platform/crypto"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/logging"
-	"billing-platform/internal/platform/numbering"
-	"billing-platform/internal/platform/outbox"
-	"billing-platform/internal/platform/permissions"
+	accountingapp "rechvix/internal/modules/accounting/app"
+	accountingpg "rechvix/internal/modules/accounting/pg"
+	"rechvix/internal/modules/ai"
+	catalogueapp "rechvix/internal/modules/catalogue/app"
+	cataloguepg "rechvix/internal/modules/catalogue/pg"
+	contactsapp "rechvix/internal/modules/contacts/app"
+	contactspg "rechvix/internal/modules/contacts/pg"
+	"rechvix/internal/modules/gstindia"
+	gstindiapg "rechvix/internal/modules/gstindia/pg"
+	identityapp "rechvix/internal/modules/identity/app"
+	identitypg "rechvix/internal/modules/identity/pg"
+	inventoryapp "rechvix/internal/modules/inventory/app"
+	inventorypg "rechvix/internal/modules/inventory/pg"
+	orgapp "rechvix/internal/modules/organisation/app"
+	orgpg "rechvix/internal/modules/organisation/pg"
+	pricingapp "rechvix/internal/modules/pricing/app"
+	pricingpg "rechvix/internal/modules/pricing/pg"
+	reportingapp "rechvix/internal/modules/reporting/app"
+	reportingpg "rechvix/internal/modules/reporting/pg"
+	salesapp "rechvix/internal/modules/sales/app"
+	salespg "rechvix/internal/modules/sales/pg"
+	taxationapp "rechvix/internal/modules/taxation/app"
+	taxationpg "rechvix/internal/modules/taxation/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/config"
+	appcrypto "rechvix/internal/platform/crypto"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/logging"
+	"rechvix/internal/platform/numbering"
+	"rechvix/internal/platform/outbox"
+	"rechvix/internal/platform/permissions"
 )
 
 func main() {
@@ -155,7 +155,7 @@ func run() error {
 
 	toolset := ai.NewToolset(principal, scopeCodes, catalogueSvc, contactsSvc, inventorySvc, salesSvc, reportingSvc, auditRecorder)
 
-	server := mcp.NewServer(&mcp.Implementation{Name: "billing-platform", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "rechvix", Version: "0.1.0"}, nil)
 	toolset.Register(server)
 
 	logger.Info("mcp server starting on stdio")

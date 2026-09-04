@@ -2,7 +2,7 @@ import { createContext, use, useCallback, useEffect, useState, type ReactNode } 
 
 type Theme = "light" | "dark";
 
-const KEY = "billing-platform:theme";
+const KEY = "rechvix:theme";
 
 function systemTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";

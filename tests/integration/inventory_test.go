@@ -11,14 +11,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	catalogueapp "billing-platform/internal/modules/catalogue/app"
-	cataloguepg "billing-platform/internal/modules/catalogue/pg"
-	inventoryapp "billing-platform/internal/modules/inventory/app"
-	inventorydomain "billing-platform/internal/modules/inventory/domain"
-	inventorypg "billing-platform/internal/modules/inventory/pg"
-	orgapp "billing-platform/internal/modules/organisation/app"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/permissions"
+	catalogueapp "rechvix/internal/modules/catalogue/app"
+	cataloguepg "rechvix/internal/modules/catalogue/pg"
+	inventoryapp "rechvix/internal/modules/inventory/app"
+	inventorydomain "rechvix/internal/modules/inventory/domain"
+	inventorypg "rechvix/internal/modules/inventory/pg"
+	orgapp "rechvix/internal/modules/organisation/app"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/permissions"
 )
 
 func decimalPtr(d decimal.Decimal) *decimal.Decimal { return &d }

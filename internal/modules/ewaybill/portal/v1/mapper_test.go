@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/ewaybill/canonical"
+	"rechvix/internal/modules/ewaybill/canonical"
 )
 
 func TestFileName_HumanRecognizable(t *testing.T) {

@@ -8,11 +8,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/pricing/domain"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/money"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/pricing/domain"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/money"
+	"rechvix/internal/platform/permissions"
 )
 
 type Service struct {

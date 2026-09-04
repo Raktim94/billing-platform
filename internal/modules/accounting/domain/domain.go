@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/platform/money"
 )
 
 type AccountType string

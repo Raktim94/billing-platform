@@ -16,7 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/platform/database"
 )
 
 // Repository is the persistence contract — one implementation (pg.go)

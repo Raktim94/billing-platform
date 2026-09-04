@@ -12,10 +12,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/gstindia/app"
-	"billing-platform/internal/modules/gstindia/domain"
-	httpx "billing-platform/internal/platform/http"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/gstindia/app"
+	"rechvix/internal/modules/gstindia/domain"
+	httpx "rechvix/internal/platform/http"
+	"rechvix/internal/platform/permissions"
 )
 
 type Handlers struct{ svc *app.Service }

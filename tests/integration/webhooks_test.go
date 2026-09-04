@@ -14,11 +14,11 @@ import (
 
 	"github.com/google/uuid"
 
-	webhooksapp "billing-platform/internal/modules/webhooks/app"
-	webhookspg "billing-platform/internal/modules/webhooks/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/outbox"
-	"billing-platform/internal/platform/permissions"
+	webhooksapp "rechvix/internal/modules/webhooks/app"
+	webhookspg "rechvix/internal/modules/webhooks/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/outbox"
+	"rechvix/internal/platform/permissions"
 )
 
 // newTestWebhooksService returns the service plus a handlers map for

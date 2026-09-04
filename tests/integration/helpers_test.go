@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	orgapp "billing-platform/internal/modules/organisation/app"
-	orgpg "billing-platform/internal/modules/organisation/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/permissions"
+	orgapp "rechvix/internal/modules/organisation/app"
+	orgpg "rechvix/internal/modules/organisation/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/permissions"
 )
 
 // mustDecimal parses a decimal literal used inline in a test's arrange

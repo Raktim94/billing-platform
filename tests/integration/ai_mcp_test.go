@@ -15,17 +15,17 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"billing-platform/internal/modules/ai"
-	catalogueapp "billing-platform/internal/modules/catalogue/app"
-	contactsapp "billing-platform/internal/modules/contacts/app"
-	contactspg "billing-platform/internal/modules/contacts/pg"
-	identityapp "billing-platform/internal/modules/identity/app"
-	identitydomain "billing-platform/internal/modules/identity/domain"
-	inventoryapp "billing-platform/internal/modules/inventory/app"
-	reportingapp "billing-platform/internal/modules/reporting/app"
-	salesapp "billing-platform/internal/modules/sales/app"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/ai"
+	catalogueapp "rechvix/internal/modules/catalogue/app"
+	contactsapp "rechvix/internal/modules/contacts/app"
+	contactspg "rechvix/internal/modules/contacts/pg"
+	identityapp "rechvix/internal/modules/identity/app"
+	identitydomain "rechvix/internal/modules/identity/domain"
+	inventoryapp "rechvix/internal/modules/inventory/app"
+	reportingapp "rechvix/internal/modules/reporting/app"
+	salesapp "rechvix/internal/modules/sales/app"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/permissions"
 )
 
 // connectMCP wires an in-process mcp.Server (with toolset registered) to

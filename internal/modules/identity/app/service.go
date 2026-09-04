@@ -9,12 +9,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/identity/domain"
-	orgapp "billing-platform/internal/modules/organisation/app"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/crypto"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/identity/domain"
+	orgapp "rechvix/internal/modules/organisation/app"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/crypto"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/permissions"
 )
 
 // OrganisationProvisioner is the narrow cross-module interface identity's

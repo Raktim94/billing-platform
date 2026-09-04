@@ -99,7 +99,7 @@ export function BootstrapPage() {
       <div className={styles.card} style={{ maxWidth: 460 }}>
         <div className={styles.wordmark}>
           <span className={styles.mark} aria-hidden="true" />
-          billing-platform
+          rechvix
         </div>
         <h1 className={styles.title}>Set up your business</h1>
         <p className={styles.subtitle}>This runs once, on a brand-new installation.</p>

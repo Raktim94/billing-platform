@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/platform/money"
 )
 
 // Filter is the shared query shape every report accepts (brief §22: date,

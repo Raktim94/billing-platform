@@ -48,7 +48,7 @@ function isErrorEnvelope(v: unknown): v is ErrorEnvelope {
 /** Fired whenever a request comes back 401 — the app-level auth state
  * listens for this to redirect to /login, rather than every single
  * call site needing to handle it individually. */
-export const AUTH_EVENT = "billing-platform:unauthorized";
+export const AUTH_EVENT = "rechvix:unauthorized";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

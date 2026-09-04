@@ -17,17 +17,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	contactsapp "billing-platform/internal/modules/contacts/app"
-	einvoicedomain "billing-platform/internal/modules/einvoice/domain"
-	"billing-platform/internal/modules/ewaybill/canonical"
-	"billing-platform/internal/modules/ewaybill/domain"
-	"billing-platform/internal/modules/ewaybill/eligibility"
-	"billing-platform/internal/modules/ewaybill/portal"
-	orgapp "billing-platform/internal/modules/organisation/app"
-	salesapp "billing-platform/internal/modules/sales/app"
-	taxationapp "billing-platform/internal/modules/taxation/app"
-	taxdomain "billing-platform/internal/modules/taxation/domain"
-	"billing-platform/internal/platform/audit"
+	contactsapp "rechvix/internal/modules/contacts/app"
+	einvoicedomain "rechvix/internal/modules/einvoice/domain"
+	"rechvix/internal/modules/ewaybill/canonical"
+	"rechvix/internal/modules/ewaybill/domain"
+	"rechvix/internal/modules/ewaybill/eligibility"
+	"rechvix/internal/modules/ewaybill/portal"
+	orgapp "rechvix/internal/modules/organisation/app"
+	salesapp "rechvix/internal/modules/sales/app"
+	taxationapp "rechvix/internal/modules/taxation/app"
+	taxdomain "rechvix/internal/modules/taxation/domain"
+	"rechvix/internal/platform/audit"
 )
 
 type Service struct {

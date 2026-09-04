@@ -20,11 +20,11 @@ import (
 
 	"github.com/google/uuid"
 
-	accountingapp "billing-platform/internal/modules/accounting/app"
-	accountingdomain "billing-platform/internal/modules/accounting/domain"
-	"billing-platform/internal/modules/reporting/domain"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/permissions"
+	accountingapp "rechvix/internal/modules/accounting/app"
+	accountingdomain "rechvix/internal/modules/accounting/domain"
+	"rechvix/internal/modules/reporting/domain"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/permissions"
 )
 
 type Service struct {

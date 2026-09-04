@@ -13,15 +13,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	ewaybillapp "billing-platform/internal/modules/ewaybill/app"
-	inventorydomain "billing-platform/internal/modules/inventory/domain"
-	"billing-platform/internal/modules/sales/app"
-	"billing-platform/internal/modules/sales/domain"
-	"billing-platform/internal/modules/sales/printing"
-	taxdomain "billing-platform/internal/modules/taxation/domain"
-	"billing-platform/internal/platform/database"
-	httpx "billing-platform/internal/platform/http"
-	"billing-platform/internal/platform/permissions"
+	ewaybillapp "rechvix/internal/modules/ewaybill/app"
+	inventorydomain "rechvix/internal/modules/inventory/domain"
+	"rechvix/internal/modules/sales/app"
+	"rechvix/internal/modules/sales/domain"
+	"rechvix/internal/modules/sales/printing"
+	taxdomain "rechvix/internal/modules/taxation/domain"
+	"rechvix/internal/platform/database"
+	httpx "rechvix/internal/platform/http"
+	"rechvix/internal/platform/permissions"
 )
 
 type Handlers struct {

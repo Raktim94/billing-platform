@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"billing-platform/internal/modules/ewaybill/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/ewaybill/domain"
+	"rechvix/internal/platform/database"
 )
 
 type RecordRepo struct {

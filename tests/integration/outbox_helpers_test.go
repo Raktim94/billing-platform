@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"billing-platform/internal/platform/outbox"
+	"rechvix/internal/platform/outbox"
 )
 
 // processNextForOrg is a TEST-ONLY alternative to outbox.Poller.ProcessOnce

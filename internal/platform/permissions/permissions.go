@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/platform/database"
 )
 
 // Principal is the authenticated caller of an application-layer method —

@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	einvoicedomain "billing-platform/internal/modules/einvoice/domain"
-	"billing-platform/internal/modules/ewaybill/domain"
+	einvoicedomain "rechvix/internal/modules/einvoice/domain"
+	"rechvix/internal/modules/ewaybill/domain"
 )
 
 // fakeRecordRepo is an in-memory, organisation-scoped stand-in for

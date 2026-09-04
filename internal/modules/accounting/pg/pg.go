@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/accounting/domain"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/modules/accounting/domain"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/money"
 )
 
 func pgUniqueViolation(err error) bool {

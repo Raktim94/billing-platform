@@ -7,7 +7,7 @@
 # Copy .env.example to .env in this directory before first run; Compose
 # reads .env automatically. Never commit a real .env.
 
-name: billing-platform
+name: rechvix
 
 services:
   postgres:

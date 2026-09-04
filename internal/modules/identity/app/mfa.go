@@ -10,10 +10,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 
-	"billing-platform/internal/modules/identity/domain"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/crypto"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/identity/domain"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/crypto"
+	"rechvix/internal/platform/permissions"
 )
 
 const recoveryCodeCount = 10

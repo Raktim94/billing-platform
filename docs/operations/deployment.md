@@ -10,8 +10,8 @@ is fully functional, but there's no browser UI to open yet.
 ## Self-hosted (Docker Compose)
 
 ```bash
-git clone https://github.com/Raktim94/billing-platform.git
-cd billing-platform/deploy/compose
+git clone https://github.com/Raktim94/rechvix.git
+cd rechvix/deploy/compose
 cp .env.example .env
 ```
 
@@ -103,7 +103,7 @@ None of these start with a plain `docker compose up -d`:
 a scheduled restore-verification job are Stage 11 scope (brief §42),
 tracked in `docs/TODO.md`, not this stage. In the meantime, standard
 Postgres practice applies: the `postgres-data` named volume holds
-everything; a `docker exec billing-platform-postgres-1 pg_dump -U
+everything; a `docker exec rechvix-postgres-1 pg_dump -U
 billing_migrator billing > backup.sql` (run as the migrator/owner role,
 which can see everything) works as a manual backup today. Don't rely on
 this as your only backup strategy until Stage 11 ships something tested.
@@ -119,7 +119,7 @@ repo).
 **Not yet installable from a real CasaOS instance as of this version** —
 `.github/workflows/docker-publish.yml` (multi-arch amd64+arm64 image
 build/push) exists but hasn't run against a real version tag yet, so the
-`ghcr.io/raktim94/billing-platform-{server,worker}:0.1.0` images the
+`ghcr.io/raktim94/rechvix-{server,worker}:0.1.0` images the
 manifest references don't exist on GHCR yet. Cut a `v0.1.0` tag (or
 trigger the workflow manually via `workflow_dispatch`) before actually
 submitting to CasaOS-AppStore. The manifest's structure is validated

@@ -10,12 +10,12 @@ import (
 
 	"github.com/google/uuid"
 
-	identityapp "billing-platform/internal/modules/identity/app"
-	identitypg "billing-platform/internal/modules/identity/pg"
-	orgapp "billing-platform/internal/modules/organisation/app"
-	"billing-platform/internal/platform/audit"
-	appcrypto "billing-platform/internal/platform/crypto"
-	"billing-platform/internal/platform/permissions"
+	identityapp "rechvix/internal/modules/identity/app"
+	identitypg "rechvix/internal/modules/identity/pg"
+	orgapp "rechvix/internal/modules/organisation/app"
+	"rechvix/internal/platform/audit"
+	appcrypto "rechvix/internal/platform/crypto"
+	"rechvix/internal/platform/permissions"
 )
 
 func newTestIdentityService(t *testing.T) (*identityapp.Service, *orgapp.Service) {

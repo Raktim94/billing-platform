@@ -16,9 +16,9 @@ package printing
 import (
 	"time"
 
-	"billing-platform/internal/modules/sales/domain"
-	taxdomain "billing-platform/internal/modules/taxation/domain"
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/modules/sales/domain"
+	taxdomain "rechvix/internal/modules/taxation/domain"
+	"rechvix/internal/platform/money"
 )
 
 // Template selects which of brief §19's document layouts to render.

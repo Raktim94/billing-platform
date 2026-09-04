@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/platform/database"
 )
 
 // PGStore loads grants from role_permissions joined through user_roles.

@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	gstindiaapp "billing-platform/internal/modules/gstindia/app"
-	gstindiadomain "billing-platform/internal/modules/gstindia/domain"
-	gstindiapg "billing-platform/internal/modules/gstindia/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/permissions"
+	gstindiaapp "rechvix/internal/modules/gstindia/app"
+	gstindiadomain "rechvix/internal/modules/gstindia/domain"
+	gstindiapg "rechvix/internal/modules/gstindia/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/permissions"
 )
 
 func newTestGSTIndiaService(t *testing.T) (*gstindiaapp.Service, *gstindiapg.TaxRateRepo) {

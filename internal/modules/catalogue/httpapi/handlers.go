@@ -11,11 +11,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/catalogue/app"
-	"billing-platform/internal/modules/catalogue/domain"
-	httpx "billing-platform/internal/platform/http"
-	"billing-platform/internal/platform/importer"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/catalogue/app"
+	"rechvix/internal/modules/catalogue/domain"
+	httpx "rechvix/internal/platform/http"
+	"rechvix/internal/platform/importer"
+	"rechvix/internal/platform/permissions"
 )
 
 type Handlers struct{ svc *app.Service }

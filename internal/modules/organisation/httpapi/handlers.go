@@ -9,10 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/organisation/app"
-	"billing-platform/internal/modules/organisation/domain"
-	httpx "billing-platform/internal/platform/http"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/organisation/app"
+	"rechvix/internal/modules/organisation/domain"
+	httpx "rechvix/internal/platform/http"
+	"rechvix/internal/platform/permissions"
 )
 
 type Handlers struct {

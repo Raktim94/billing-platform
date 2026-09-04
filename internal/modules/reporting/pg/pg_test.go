@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/reporting/domain"
+	"rechvix/internal/modules/reporting/domain"
 )
 
 // TestGroupExpr_OnlyEmitsFixedLiteralExpressions is the SQL-injection

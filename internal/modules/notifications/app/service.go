@@ -13,12 +13,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/notifications/domain"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/crypto"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/outbox"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/notifications/domain"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/crypto"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/outbox"
+	"rechvix/internal/platform/permissions"
 )
 
 const EventTypeSend = "notification.send"

@@ -7,10 +7,10 @@ import (
 	"errors"
 	"net/http"
 
-	"billing-platform/internal/modules/identity/app"
-	"billing-platform/internal/modules/identity/domain"
-	httpx "billing-platform/internal/platform/http"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/identity/app"
+	"rechvix/internal/modules/identity/domain"
+	httpx "rechvix/internal/platform/http"
+	"rechvix/internal/platform/permissions"
 )
 
 // RequireAuth resolves the session cookie to a Principal and attaches it

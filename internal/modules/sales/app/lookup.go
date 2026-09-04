@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/money"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/platform/money"
+	"rechvix/internal/platform/permissions"
 )
 
 // BillingLookupResult is one product's billing-counter search result

@@ -15,9 +15,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/reporting/domain"
-	"billing-platform/internal/platform/database"
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/modules/reporting/domain"
+	"rechvix/internal/platform/database"
+	"rechvix/internal/platform/money"
 )
 
 type Repo struct{ pool *database.Pool }

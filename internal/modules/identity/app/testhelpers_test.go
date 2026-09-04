@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/platform/permissions"
 )
 
 func principalOf(orgID, userID uuid.UUID) permissions.Principal {

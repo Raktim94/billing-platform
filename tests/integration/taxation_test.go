@@ -9,14 +9,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/modules/gstindia"
-	gstindiaapp "billing-platform/internal/modules/gstindia/app"
-	gstindiadomain "billing-platform/internal/modules/gstindia/domain"
-	gstindiapg "billing-platform/internal/modules/gstindia/pg"
-	taxationapp "billing-platform/internal/modules/taxation/app"
-	taxationdomain "billing-platform/internal/modules/taxation/domain"
-	taxationpg "billing-platform/internal/modules/taxation/pg"
-	"billing-platform/internal/platform/money"
+	"rechvix/internal/modules/gstindia"
+	gstindiaapp "rechvix/internal/modules/gstindia/app"
+	gstindiadomain "rechvix/internal/modules/gstindia/domain"
+	gstindiapg "rechvix/internal/modules/gstindia/pg"
+	taxationapp "rechvix/internal/modules/taxation/app"
+	taxationdomain "rechvix/internal/modules/taxation/domain"
+	taxationpg "rechvix/internal/modules/taxation/pg"
+	"rechvix/internal/platform/money"
 )
 
 func newTestTaxationService(t *testing.T) *taxationapp.Service {

@@ -43,16 +43,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	catalogueapp "billing-platform/internal/modules/catalogue/app"
-	contactsapp "billing-platform/internal/modules/contacts/app"
-	inventoryapp "billing-platform/internal/modules/inventory/app"
-	reportingapp "billing-platform/internal/modules/reporting/app"
-	reportingdomain "billing-platform/internal/modules/reporting/domain"
-	salesapp "billing-platform/internal/modules/sales/app"
-	salesdomain "billing-platform/internal/modules/sales/domain"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/money"
-	"billing-platform/internal/platform/permissions"
+	catalogueapp "rechvix/internal/modules/catalogue/app"
+	contactsapp "rechvix/internal/modules/contacts/app"
+	inventoryapp "rechvix/internal/modules/inventory/app"
+	reportingapp "rechvix/internal/modules/reporting/app"
+	reportingdomain "rechvix/internal/modules/reporting/domain"
+	salesapp "rechvix/internal/modules/sales/app"
+	salesdomain "rechvix/internal/modules/sales/domain"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/money"
+	"rechvix/internal/platform/permissions"
 )
 
 type Toolset struct {

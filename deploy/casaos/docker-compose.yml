@@ -17,13 +17,13 @@
 # paths, not real design assets — this project has no logo yet (no
 # frontend exists as of Stage 10a). Replace before real submission.
 
-name: billing-platform
+name: rechvix
 
 services:
   postgres:
     image: postgres:18
-    container_name: billing-platform-postgres
-    hostname: billing-platform-postgres
+    container_name: rechvix-postgres
+    hostname: rechvix-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: billing
@@ -43,7 +43,7 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - billing-platform
+      - rechvix
     x-casaos:
       envs:
         - container: POSTGRES_PASSWORD
@@ -61,31 +61,31 @@ services:
             en_US: One-time database setup script — do not modify.
 
   migrate:
-    image: ghcr.io/raktim94/billing-platform-server:0.1.0
-    container_name: billing-platform-migrate
+    image: ghcr.io/raktim94/rechvix-server:0.1.0
+    container_name: rechvix-migrate
     command: ["-migrate"]
     restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_DSN: "postgres://billing_migrator:${POSTGRES_PASSWORD}@billing-platform-postgres:5432/billing?sslmode=disable"
+      DATABASE_DSN: "postgres://billing_migrator:${POSTGRES_PASSWORD}@rechvix-postgres:5432/billing?sslmode=disable"
     networks:
-      - billing-platform
+      - rechvix
     x-casaos:
       envs: []
 
   app:
-    image: ghcr.io/raktim94/billing-platform-server:0.1.0
-    container_name: billing-platform-app
-    hostname: billing-platform-app
+    image: ghcr.io/raktim94/rechvix-server:0.1.0
+    container_name: rechvix-app
+    hostname: rechvix-app
     restart: unless-stopped
     depends_on:
       migrate:
         condition: service_completed_successfully
     environment:
       HTTP_PORT: "8080"
-      DATABASE_DSN: "postgres://billing_app:${BILLING_APP_PASSWORD}@billing-platform-postgres:5432/billing?sslmode=disable"
+      DATABASE_DSN: "postgres://billing_app:${BILLING_APP_PASSWORD}@rechvix-postgres:5432/billing?sslmode=disable"
       DATABASE_AUTO_MIGRATE: "false"
       SESSION_COOKIE_SECURE: "false"
       AEAD_ENCRYPTION_KEY: "${AEAD_ENCRYPTION_KEY}"
@@ -95,7 +95,7 @@ services:
         published: "8090"
         protocol: tcp
     networks:
-      - billing-platform
+      - rechvix
     x-casaos:
       envs:
         - container: AEAD_ENCRYPTION_KEY
@@ -104,32 +104,32 @@ services:
       ports:
         - container: "8080"
           description:
-            en_US: billing-platform API
+            en_US: rechvix API
           protocol: tcp
 
   worker:
-    image: ghcr.io/raktim94/billing-platform-worker:0.1.0
-    container_name: billing-platform-worker
-    hostname: billing-platform-worker
+    image: ghcr.io/raktim94/rechvix-worker:0.1.0
+    container_name: rechvix-worker
+    hostname: rechvix-worker
     restart: unless-stopped
     depends_on:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_DSN: "postgres://billing_app:${BILLING_APP_PASSWORD}@billing-platform-postgres:5432/billing?sslmode=disable"
+      DATABASE_DSN: "postgres://billing_app:${BILLING_APP_PASSWORD}@rechvix-postgres:5432/billing?sslmode=disable"
       AEAD_ENCRYPTION_KEY: "${AEAD_ENCRYPTION_KEY}"
       EINVOICE_PROVIDER: "mock"
     networks:
-      - billing-platform
+      - rechvix
     x-casaos:
       envs: []
 
 networks:
-  billing-platform:
+  rechvix:
     driver: bridge
 
 x-casaos:
-  id: com.nodedr.billing-platform
+  id: com.nodedr.rechvix
   architectures:
     - amd64
     - arm64
@@ -139,10 +139,10 @@ x-casaos:
   category: Finance
   # KNOWN GAP: placeholder paths, no real assets exist yet (no frontend/
   # brand work has happened as of Stage 10a) — replace before submission.
-  icon: https://cdn.jsdelivr.net/gh/Raktim94/billing-platform@main/deploy/casaos/icon.png
-  thumbnail: https://cdn.jsdelivr.net/gh/Raktim94/billing-platform@main/deploy/casaos/thumbnail.png
+  icon: https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/deploy/casaos/icon.png
+  thumbnail: https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/deploy/casaos/thumbnail.png
   title:
-    en_US: billing-platform
+    en_US: rechvix
   tagline:
     en_US: Self-hosted billing, inventory, accounting, and India GST — no subscription, no external connection required
   description:
@@ -168,7 +168,7 @@ x-casaos:
         passwords), and AEAD_ENCRYPTION_KEY (`openssl rand -base64 32`)
         before installing.
 
-        Your data persists at `/DATA/AppData/billing-platform/postgres`,
+        Your data persists at `/DATA/AppData/rechvix/postgres`,
         following CasaOS/ZimaOS's standard backup/restore convention.
 
         This early release has no web interface yet — use the REST API

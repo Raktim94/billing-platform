@@ -25,12 +25,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/ewaybill/app"
-	"billing-platform/internal/modules/ewaybill/domain"
-	"billing-platform/internal/modules/ewaybill/govportal"
-	"billing-platform/internal/platform/database"
-	httpx "billing-platform/internal/platform/http"
-	"billing-platform/internal/platform/permissions"
+	"rechvix/internal/modules/ewaybill/app"
+	"rechvix/internal/modules/ewaybill/domain"
+	"rechvix/internal/modules/ewaybill/govportal"
+	"rechvix/internal/platform/database"
+	httpx "rechvix/internal/platform/http"
+	"rechvix/internal/platform/permissions"
 )
 
 type Handlers struct {

@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"billing-platform/internal/modules/notifications/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/notifications/domain"
+	"rechvix/internal/platform/database"
 )
 
 type ShareLinkRepo struct{ pool *database.Pool }

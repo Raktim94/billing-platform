@@ -68,7 +68,7 @@ open — they're settled, recorded here for traceability:
   like `nodedr-pos` — Docker/CasaOS-friendly, **no external connection
   required** for core operation (see `docs/architecture.md`'s license
   section for exactly which modules are the sole, opt-in exceptions).
-- **Working name:** stays `billing-platform` — repo is public now, no
+- **Working name:** stays `rechvix` — repo is public now, no
   rename planned unless the user names it later.
 - **e-Invoice/e-Way Bill provider:** build against the NIC sandbox
   (`einv-apisandbox.nic.in`) behind `EInvoiceProvider`; a real GSP/ASP

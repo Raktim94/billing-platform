@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/platform/database"
 )
 
 // RoleRepo implements the minimal RBAC-catalog operations identity's

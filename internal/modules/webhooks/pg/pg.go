@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"billing-platform/internal/modules/webhooks/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/webhooks/domain"
+	"rechvix/internal/platform/database"
 )
 
 type EndpointRepo struct{ pool *database.Pool }

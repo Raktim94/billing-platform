@@ -10,7 +10,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/modules/ewaybill/canonical"
+	"rechvix/internal/modules/ewaybill/canonical"
 )
 
 // Requirement is EvaluateEWayBillRequirement's result (docs/architecture.md

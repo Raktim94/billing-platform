@@ -9,11 +9,11 @@ import (
 
 	"github.com/google/uuid"
 
-	catalogueapp "billing-platform/internal/modules/catalogue/app"
-	cataloguedomain "billing-platform/internal/modules/catalogue/domain"
-	cataloguepg "billing-platform/internal/modules/catalogue/pg"
-	"billing-platform/internal/platform/audit"
-	"billing-platform/internal/platform/permissions"
+	catalogueapp "rechvix/internal/modules/catalogue/app"
+	cataloguedomain "rechvix/internal/modules/catalogue/domain"
+	cataloguepg "rechvix/internal/modules/catalogue/pg"
+	"rechvix/internal/platform/audit"
+	"rechvix/internal/platform/permissions"
 )
 
 func newTestCatalogueService(t *testing.T) *catalogueapp.Service {

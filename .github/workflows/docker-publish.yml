@@ -52,9 +52,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: billing-platform-server
+          - image: rechvix-server
             dockerfile: deploy/docker/server.Dockerfile
-          - image: billing-platform-worker
+          - image: rechvix-worker
             dockerfile: deploy/docker/worker.Dockerfile
 
     steps:

@@ -103,9 +103,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build server image
-        run: docker build -f deploy/docker/server.Dockerfile -t billing-platform-server:ci .
+        run: docker build -f deploy/docker/server.Dockerfile -t rechvix-server:ci .
       - name: Build worker image
-        run: docker build -f deploy/docker/worker.Dockerfile -t billing-platform-worker:ci .
+        run: docker build -f deploy/docker/worker.Dockerfile -t rechvix-worker:ci .
 
   compose-config:
     name: Docker Compose — config validation

@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	gstdomain "billing-platform/internal/modules/gstindia/domain"
-	taxdomain "billing-platform/internal/modules/taxation/domain"
-	"billing-platform/internal/platform/money"
+	gstdomain "rechvix/internal/modules/gstindia/domain"
+	taxdomain "rechvix/internal/modules/taxation/domain"
+	"rechvix/internal/platform/money"
 )
 
 // --- in-memory fakes, so the golden fixture tests run with no database ---

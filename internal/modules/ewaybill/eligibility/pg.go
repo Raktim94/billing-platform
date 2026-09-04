@@ -6,7 +6,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/platform/database"
 )
 
 // PGRepository reads ewaybill_eligibility_rules — a GLOBAL table (no

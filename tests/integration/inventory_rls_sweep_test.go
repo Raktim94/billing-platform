@@ -9,12 +9,12 @@ import (
 
 	"github.com/google/uuid"
 
-	inventorydomain "billing-platform/internal/modules/inventory/domain"
-	inventorypg "billing-platform/internal/modules/inventory/pg"
-	orgapp "billing-platform/internal/modules/organisation/app"
-	purchasesdomain "billing-platform/internal/modules/purchases/domain"
-	purchasespg "billing-platform/internal/modules/purchases/pg"
-	"billing-platform/internal/platform/money"
+	inventorydomain "rechvix/internal/modules/inventory/domain"
+	inventorypg "rechvix/internal/modules/inventory/pg"
+	orgapp "rechvix/internal/modules/organisation/app"
+	purchasesdomain "rechvix/internal/modules/purchases/domain"
+	purchasespg "rechvix/internal/modules/purchases/pg"
+	"rechvix/internal/platform/money"
 )
 
 // TestRLS_Sweep_Stage4Tables directly proves the RLS policy (not just the

@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"billing-platform/internal/modules/identity/domain"
-	"billing-platform/internal/platform/database"
+	"rechvix/internal/modules/identity/domain"
+	"rechvix/internal/platform/database"
 )
 
 type UserRepo struct{ pool *database.Pool }

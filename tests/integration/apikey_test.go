@@ -10,11 +10,11 @@ import (
 
 	"github.com/google/uuid"
 
-	identityapp "billing-platform/internal/modules/identity/app"
-	identitydomain "billing-platform/internal/modules/identity/domain"
-	identityhttp "billing-platform/internal/modules/identity/httpapi"
-	httpx "billing-platform/internal/platform/http"
-	"billing-platform/internal/platform/permissions"
+	identityapp "rechvix/internal/modules/identity/app"
+	identitydomain "rechvix/internal/modules/identity/domain"
+	identityhttp "rechvix/internal/modules/identity/httpapi"
+	httpx "rechvix/internal/platform/http"
+	"rechvix/internal/platform/permissions"
 )
 
 func TestAPIKey_CreateThenAuthenticateAsAlternativeToSession(t *testing.T) {
