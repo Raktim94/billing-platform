@@ -11,7 +11,8 @@ already-submitted CasaOS manifest.
 | --- | --- |
 | `docker-compose.yml` | The app manifest itself — standard Compose plus a top-level `x-casaos:` block CasaOS reads to render the store listing and install form. |
 | `icon.png` | 512×512 square app icon. |
-| `thumbnail.png` | 1568×884 store-listing banner. |
+| `thumbnail.png` | 720×450 store-listing banner. |
+| `screenshot-1.png` … `screenshot-3.png` | Dashboard, and two other real screens from the running app. |
 
 ## Install it right now (before official app store approval)
 

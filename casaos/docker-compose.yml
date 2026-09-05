@@ -1,39 +1,9 @@
-# CasaOS/ZimaOS app store manifest. Structure verified against this
-# project's sibling, nodedr-pos's real, already-submitted CasaOS manifest
-# (~/nodedr-pos/casaos/docker-compose.yml) — not guessed from memory.
-#
-# Unlike deploy/compose/docker-compose.yml (which `build:`s from source for
-# a self-hosted `git clone` flow), CasaOS installs straight from this
-# compose file with no access to the repo — every image below is a
-# pre-built, version-pinned GHCR tag, published by
-# .github/workflows/docker-publish.yml. rechvix-server:0.1.0 and
-# rechvix-worker:0.1.0 were cut via workflow_dispatch and are live on GHCR.
-# Beyond schema validation (`docker compose config -q`, passing), this
-# manifest has been brought up end-to-end against the real published images
-# (fresh install, restart, and a live login request all verified) — see the
-# postgres-init service below for a real crash-loop bug that YAML/schema
-# validation alone would never have caught.
-#
-# icon.png/thumbnail.png now live alongside this file (generated from the
-# same mark apps/web uses — src/components/Logo.tsx) so the jsdelivr URLs
-# below actually resolve. Still worth a real designer pass before a
-# CasaOS-AppStore submission, but they're no longer 404s.
-
 name: rechvix
 
 services:
-  # CasaOS installs pull pre-built images with no access to this repo, so
-  # unlike deploy/compose/ (which bind-mounts a real, checked-in
-  # postgres-init/01-create-runtime-role.sh from the git clone), there is
-  # no file to bind-mount here — postgres's /DATA/AppData/$AppID/postgres-init
-  # starts out genuinely empty on a fresh install. This one-shot container
-  # generates that init script onto the same host directory *before*
-  # postgres starts, so postgres's own first-boot docker-entrypoint-initdb.d
-  # mechanism picks it up exactly as it would in the deploy/compose/ path.
-  # Without this, `billing_app` (the non-owning runtime role app/worker
-  # connect as) never gets created and both crash-loop forever on
-  # "password authentication failed for user billing_app" — reproduced and
-  # verified fixed against the real published images, not just YAML-valid.
+  # CasaOS has no repo access to bind-mount a real init script, so this
+  # generates one on first boot instead — without it, billing_app never
+  # gets created and app/worker crash-loop on auth failure.
   postgres-init:
     image: postgres:18
     container_name: rechvix-postgres-init
@@ -183,10 +153,12 @@ x-casaos:
   author: NodeDR Infotech Private Limited
   developer: Raktim94
   category: Finance
-  # KNOWN GAP: placeholder paths, no real assets exist yet (no frontend/
-  # brand work has happened as of Stage 10a) — replace before submission.
   icon: https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/casaos/icon.png
   thumbnail: https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/casaos/thumbnail.png
+  screenshot_link:
+    - https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/casaos/screenshot-1.png
+    - https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/casaos/screenshot-2.png
+    - https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/casaos/screenshot-3.png
   title:
     en_US: rechvix
   tagline:
