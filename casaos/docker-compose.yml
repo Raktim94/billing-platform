@@ -138,8 +138,8 @@ x-casaos:
   category: Finance
   # KNOWN GAP: placeholder paths, no real assets exist yet (no frontend/
   # brand work has happened as of Stage 10a) — replace before submission.
-  icon: https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/deploy/casaos/icon.png
-  thumbnail: https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/deploy/casaos/thumbnail.png
+  icon: https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/casaos/icon.png
+  thumbnail: https://cdn.jsdelivr.net/gh/Raktim94/rechvix@main/casaos/thumbnail.png
   title:
     en_US: rechvix
   tagline:

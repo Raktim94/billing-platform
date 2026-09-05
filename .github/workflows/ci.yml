@@ -118,6 +118,6 @@ jobs:
       - name: deploy/compose — all profiles (redis, minio, reverse-proxy)
         working-directory: deploy/compose
         run: docker compose --profile redis --profile minio --profile reverse-proxy config -q
-      - name: deploy/casaos
-        working-directory: deploy/casaos
+      - name: casaos
+        working-directory: casaos
         run: docker compose config -q

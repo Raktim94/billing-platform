@@ -1,7 +1,7 @@
 name: Publish Docker images
 
 # Builds and publishes the server/worker images that the CasaOS/ZimaOS app
-# store manifest (deploy/casaos/docker-compose.yml) pulls as pre-built,
+# store manifest (casaos/docker-compose.yml) pulls as pre-built,
 # version-pinned images from GHCR. CasaOS installs an app straight from its
 # compose file with no build step and no access to this repo's source, so
 # `build:` (used in deploy/compose/docker-compose.yml for a `git clone` +

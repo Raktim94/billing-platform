@@ -1,7 +1,7 @@
 # Deployment
 
 Covers the self-hosted Docker Compose path (`deploy/compose/`) and the
-CasaOS/ZimaOS app store path (`deploy/casaos/`). Both are described
+CasaOS/ZimaOS app store path (`casaos/`). Both are described
 architecturally in `docs/architecture.md` §12; this doc is the actual
 step-by-step. As of this writing there is no `apps/web` yet (Stage 10 —
 this doc's Stage 10a scope is packaging the Go backend/API only) — the API
@@ -110,7 +110,7 @@ this as your only backup strategy until Stage 11 ships something tested.
 
 ## CasaOS / ZimaOS
 
-`deploy/casaos/docker-compose.yml` is the app store manifest — same
+`casaos/docker-compose.yml` is the app store manifest — same
 four-service shape as the self-hosted compose file, but referencing
 pre-built, version-pinned images from GHCR instead of building from
 source (CasaOS installs directly from the manifest with no access to this
@@ -139,5 +139,5 @@ whatever CI workflow this repo eventually runs, brief §73):
 ```bash
 cd deploy/compose && docker compose config -q
 cd deploy/compose && docker compose --profile redis --profile minio --profile reverse-proxy config -q
-cd deploy/casaos && docker compose config -q
+cd casaos && docker compose config -q
 ```

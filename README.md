@@ -226,7 +226,8 @@ internal/
   modules/      domain modules: identity, organisation, catalogue, inventory, sales, accounting, gstindia, einvoice...
 api/openapi/    OpenAPI 3.1 spec (source of truth for API clients) — all 124 real routes, mechanically verified
 migrations/     versioned SQL migrations
-deploy/         docker, compose, casaos deployment manifests
+deploy/         docker, compose deployment manifests
+casaos/         CasaOS/ZimaOS app store manifest and assets
 docs/           architecture, research, ADRs, API/operations/security docs, brand assets
 tests/          integration and end-to-end tests
 ```

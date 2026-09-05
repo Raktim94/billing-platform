@@ -22,7 +22,7 @@ you don't need to wait for this to land in the official app store:
 2. Paste this URL (or the raw file contents):
 
    ```
-   https://raw.githubusercontent.com/Raktim94/rechvix/main/deploy/casaos/docker-compose.yml
+   https://raw.githubusercontent.com/Raktim94/rechvix/main/casaos/docker-compose.yml
    ```
 
 3. Set `POSTGRES_PASSWORD`, `BILLING_APP_PASSWORD` (two different strong

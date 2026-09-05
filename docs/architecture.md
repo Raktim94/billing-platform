@@ -539,7 +539,7 @@ scaling), `minio` (S3-compatible object storage for self-hosters without
 real S3), `reverse-proxy` (opt-in, per above). `.env.example` provided,
 real secrets never committed.
 
-CasaOS manifest (`deploy/casaos/docker-compose.yml`) carries the full
+CasaOS manifest (`casaos/docker-compose.yml`) carries the full
 `x-casaos` block (id, main, index, port_map, scheme, icon, title, tagline,
 description, category, architectures, version) targeting `amd64` + `arm64`
 — consistent with the nodedr-pos/OrderRestro CasaOS submissions already in
